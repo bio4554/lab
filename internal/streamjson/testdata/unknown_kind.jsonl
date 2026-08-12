@@ -1,0 +1,5 @@
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial…"}},"session_id":"11111111-2222-3333-4444-555555555555","uuid":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+{"type":"control_response","response":{"subtype":"success","request_id":"req_000_test"},"session_id":"11111111-2222-3333-4444-555555555555"}
+{"type":"compaction","subtype":"auto","pre_tokens":180000,"post_tokens":42000,"unknown_nested":{"deep":[1,2,{"x":null}]},"session_id":"11111111-2222-3333-4444-555555555555"}
+{"type":"permission_request","subtype":"tool_use","tool_name":"Bash","input":{"command":"rm -rf /tmp/scratch"},"session_id":"11111111-2222-3333-4444-555555555555"}
+{"session_id":"11111111-2222-3333-4444-555555555555","weird_order":true,"type":"future_thing"}
