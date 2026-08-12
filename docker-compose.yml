@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: lab
+      POSTGRES_PASSWORD: lab # local dev only; matches the default DSN
+      POSTGRES_DB: lab
+    ports:
+      - "5432:5432"
+    volumes:
+      # postgres:18 images keep the data dir under /var/lib/postgresql
+      # (not .../data as in earlier majors).
+      - lab-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lab -d lab"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+volumes:
+  lab-pgdata:
