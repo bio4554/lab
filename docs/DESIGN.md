@@ -53,7 +53,8 @@ lab/
 │   ├── lab/
 │   ├── kbased/
 │   ├── kbase/
-│   └── lab-agent/
+│   ├── lab-agent/
+│   └── migrate/          # dev tool: drives the two goose streams
 ├── internal/
 │   ├── labd/
 │   │   ├── api/          # client API (TUI) + agent API (lab-agent)
@@ -68,7 +69,10 @@ lab/
 │   │   └── store/
 │   ├── kbclient/         # Go client for kbased API (used by kbase CLI, labd, lab)
 │   ├── streamjson/       # Claude Code stream-json event types + codec
-│   └── wire/             # shared API types (labd <-> lab, labd <-> lab-agent)
+│   ├── wire/             # shared API types (labd <-> lab, labd <-> lab-agent)
+│   ├── config/           # shared lab.toml loading (Phase 0)
+│   ├── daemon/           # shared daemon skeleton: startup/serve/shutdown (Phase 0)
+│   └── migrate/          # goose stream wiring for both schemas (Phase 0)
 ├── stacks/               # Dockerfile templates (see Stacks)
 │   ├── base/
 │   ├── go/
@@ -87,8 +91,9 @@ Module: single Go module. Migrations via `goose`. Postgres via `pgx`. TUI via
 
 ## Networking & auth between components
 
-- `labd` client API: localhost TCP (or unix socket) for the TUI. Local
-  machine only; no multi-user auth in v1.
+- `labd` client API: localhost TCP for the TUI (decided at Phase 0
+  close: no unix socket; defaults 7710 client / 7711 agent / 7720
+  kbased). Local machine only; no multi-user auth in v1.
 - `labd` agent API and `kbased` API: TCP bound to the host, reachable from
   containers via `host.docker.internal`. Both authenticate with **per-agent
   bearer tokens minted by `labd`** at container creation and injected as env
