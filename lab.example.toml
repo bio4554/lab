@@ -1,0 +1,25 @@
+# Example lab configuration. Copy to lab.toml (gitignored) and edit.
+# Every value below is the built-in default; env vars with the LAB_
+# prefix override the file (e.g. LAB_POSTGRES_DSN, LAB_LOG_LEVEL,
+# LAB_LABD_CLIENT_API_ADDR, LAB_LABD_AGENT_API_ADDR,
+# LAB_KBASED_LISTEN_ADDR, LAB_DATA_DIR).
+
+# Shared Postgres instance; the lab and kbase schemas both live here.
+# The default matches the docker-compose dev database.
+postgres_dsn = "postgres://lab:lab@localhost:5432/lab?sslmode=disable"
+
+# Root directory for labd state (bare clones, worktrees, ...).
+# Defaults to ~/.lab.
+data_dir = "/home/YOUR_USER/.lab"
+
+# debug | info | warn | error
+log_level = "info"
+
+[labd]
+# Client (TUI) API — localhost only.
+client_api_addr = "127.0.0.1:7710"
+# Agent-facing API — reachable from containers via host.docker.internal.
+agent_api_addr = "127.0.0.1:7711"
+
+[kbased]
+listen_addr = "127.0.0.1:7720"
