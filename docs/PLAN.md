@@ -54,7 +54,7 @@ Ground rules for impl agents (repeated in every handoff):
 | Phase | Title                                  | Status  | Branch | Depends on |
 | ----- | -------------------------------------- | ------- | ------ | ---------- |
 | 0     | Scaffold & dev infrastructure          | **done** (6ce72f8, merged) | phase-00-scaffold | —          |
-| 1     | lab schema & store layer               | handed off | phase-01-store | 0          |
+| 1     | lab schema & store layer               | **done** (82ce39f, merged) | phase-01-store | 0          |
 | 2     | stream-json codec                      | handed off | phase-02-streamjson | 0          |
 | 3     | gitrepo: projects, worktrees           | handed off | phase-03-gitrepo | 0          |
 | 4     | Docker runtime & stack images          | handed off | phase-04-runtime | 0          |
