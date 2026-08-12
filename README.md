@@ -6,7 +6,7 @@ architecture and [docs/PLAN.md](docs/PLAN.md) for the phased build plan.
 
 ## Development
 
-Requires Go 1.24+ and Docker.
+Requires Go 1.24+, git, and Docker.
 
 ```sh
 make db-up                      # start dev Postgres (docker compose)
