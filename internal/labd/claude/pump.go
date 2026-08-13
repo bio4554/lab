@@ -183,6 +183,13 @@ func (d *Driver) pump(ctx context.Context, agent store.Agent, sess store.Session
 	ticker := time.NewTicker(d.pollInterval)
 	defer ticker.Stop()
 
+	// Optional enqueue wake-up (LISTEN lab_turns via labd); a nil
+	// channel never fires and the ticker remains the fallback.
+	var wake <-chan struct{}
+	if d.turnWake != nil {
+		wake = d.turnWake(agent.ID)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -212,6 +219,11 @@ func (d *Driver) pump(ctx context.Context, agent store.Agent, sess store.Session
 				if carried, err := tryNextTurn(); err != nil {
 					return carried, err
 				}
+			}
+
+		case <-wake:
+			if carried, err := tryNextTurn(); err != nil {
+				return carried, err
 			}
 
 		case <-ticker.C:

@@ -94,6 +94,17 @@ func (s *Store) EventsSince(ctx context.Context, sessionID uuid.UUID, afterSeq i
 	return events, nil
 }
 
+// MaxEventID returns the highest event id, or 0 when the log is
+// empty. The SSE stream uses it as the live-only starting point.
+func (s *Store) MaxEventID(ctx context.Context) (int64, error) {
+	var id int64
+	if err := s.pool.QueryRow(ctx,
+		"SELECT COALESCE(MAX(id), 0) FROM lab.events").Scan(&id); err != nil {
+		return 0, fmt.Errorf("max event id: %w", err)
+	}
+	return id, nil
+}
+
 // EventsSinceID returns up to limit events with id > afterEventID
 // across all sessions, in id order — the global tail.
 func (s *Store) EventsSinceID(ctx context.Context, afterEventID int64, limit int) ([]Event, error) {

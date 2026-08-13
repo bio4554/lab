@@ -81,6 +81,7 @@ type Agent struct {
 	State        string          `db:"state"`
 	ContainerID  *string         `db:"container_id"`
 	Branch       string          `db:"branch"`
+	StatusText   *string         `db:"status_text"`
 	CreatedAt    time.Time       `db:"created_at"`
 }
 
@@ -137,6 +138,17 @@ type Event struct {
 	Kind      string          `db:"kind"`
 	Payload   json.RawMessage `db:"payload"`
 	TS        time.Time       `db:"ts"`
+}
+
+// AgentToken is one bearer token for the agent API. The secret is
+// stored only as a SHA-256 hash; the plaintext is returned exactly
+// once, by MintAgentToken.
+type AgentToken struct {
+	ID         uuid.UUID  `db:"id"`
+	AgentID    uuid.UUID  `db:"agent_id"`
+	SecretHash []byte     `db:"secret_hash"`
+	CreatedAt  time.Time  `db:"created_at"`
+	RevokedAt  *time.Time `db:"revoked_at"`
 }
 
 // UsageDelta is one increment applied to a usage rollup window.
