@@ -23,6 +23,7 @@ test:
 build:
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/labd ./cmd/labd
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/kbased ./cmd/kbased
+	$(GO) build -ldflags '$(LDFLAGS)' -o bin/kbase ./cmd/kbase
 
 db-up:
 	docker compose up -d --wait postgres

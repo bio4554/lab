@@ -23,6 +23,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/bio4554/lab/internal/config"
+	"github.com/bio4554/lab/internal/kbclient"
 	"github.com/bio4554/lab/internal/labd/api"
 	"github.com/bio4554/lab/internal/labd/budget"
 	"github.com/bio4554/lab/internal/labd/claude"
@@ -116,6 +117,22 @@ func run(cfg config.Config, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	// kbase wiring: with an admin token configured, every container
+	// create registers the agent as a kbase principal and mints its
+	// project-scoped token. Without one, agents simply run without
+	// kbase access (the driver also degrades gracefully when kbased is
+	// down at create time).
+	var kbase claude.KBaseTokenSource
+	if cfg.Kbased.AdminToken != "" {
+		kbase = &kbclient.TokenProvisioner{
+			Admin:        kbclient.New(cfg.Kbased.URL, cfg.Kbased.AdminToken),
+			AgentBaseURL: cfg.Kbased.KbaseURLForAgents,
+		}
+	} else {
+		log.Warn("no [kbased] admin_token configured: agents start without kbase access",
+			"hint", "set admin_token in lab.toml or LAB_KBASED_ADMIN_TOKEN")
+	}
+
 	wake := claude.NewWakeHub()
 	driver := claude.New(claude.Options{
 		Store:       st,
@@ -126,6 +143,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 		Logger:      log,
 		AgentAPIURL: apiURL,
 		TurnGate:    gate,
+		KBase:       kbase,
 		TurnWake:    wake.Chan,
 	})
 	manager := claude.NewManager(driver, log)

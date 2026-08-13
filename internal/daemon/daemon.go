@@ -35,6 +35,9 @@ type Options struct {
 	Stream migrate.Stream
 	// Logger receives structured logs.
 	Logger *slog.Logger
+	// Routes, when non-nil, mounts the daemon's API routes on mux with
+	// access to the shared pool. /healthz is mounted either way.
+	Routes func(pool *pgxpool.Pool, mux *http.ServeMux)
 }
 
 type healthResponse struct {
@@ -83,6 +86,9 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	mux := http.NewServeMux()
+	if opts.Routes != nil {
+		opts.Routes(pool, mux)
+	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		checkCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()

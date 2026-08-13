@@ -66,6 +66,13 @@ type Options struct {
 	// TurnGate, when non-nil, is checked before every turn delivery;
 	// see the interface doc. Nil allows every turn.
 	TurnGate TurnGate
+	// KBase, when non-nil, provisions each container's kbase access at
+	// create time: ensure a principal for the agent, mint a fresh
+	// project-scoped token (prior ones revoked), injected as KBASE_URL
+	// + KBASE_TOKEN. Failures degrade gracefully — the container
+	// starts without kbase env (kbase is a dependency, not a hard
+	// requirement). labd wires a kbclient.TokenProvisioner here.
+	KBase KBaseTokenSource
 	// TurnWake, when non-nil, returns a channel signalled whenever a
 	// turn is enqueued for the agent (labd wires this to LISTEN
 	// lab_turns). The idle poll remains the fallback.
@@ -96,6 +103,7 @@ type Driver struct {
 
 	agentAPIURL    string
 	gate           TurnGate
+	kbase          KBaseTokenSource
 	turnWake       func(uuid.UUID) <-chan struct{}
 	pollInterval   time.Duration
 	shutdownGrace  time.Duration
@@ -113,6 +121,7 @@ func New(opts Options) *Driver {
 		log:            opts.Logger,
 		agentAPIURL:    opts.AgentAPIURL,
 		gate:           opts.TurnGate,
+		kbase:          opts.KBase,
 		turnWake:       opts.TurnWake,
 		pollInterval:   opts.PollInterval,
 		shutdownGrace:  opts.ShutdownGrace,
@@ -252,6 +261,7 @@ func (d *Driver) runProcess(ctx context.Context, project store.Project, agent st
 	if err != nil {
 		return pending, err
 	}
+	env = d.addKBaseEnv(ctx, project, agent, env)
 
 	// Replace any existing container for this agent: with StdinOnce
 	// semantics a container we are not attached to has a dead (or
@@ -381,6 +391,38 @@ func (d *Driver) addLabEnv(ctx context.Context, project store.Project, agent sto
 	env["LAB_API_URL"] = d.agentAPIURL
 	env["LAB_PROJECT"] = project.Name
 	return env, nil
+}
+
+// KBaseTokenSource readies an agent's kbase access at container
+// create: ensure a kbase principal for the agent, mint a fresh
+// project-scoped token (revoking prior ones), and return the
+// container-visible kbased URL plus the plaintext token.
+type KBaseTokenSource interface {
+	ProvisionAgentToken(ctx context.Context, agentID uuid.UUID, displayName string, projectID uuid.UUID) (url, token string, err error)
+}
+
+// addKBaseEnv adds the kbase contract (KBASE_URL + KBASE_TOKEN) to the
+// container env. Unlike the lab env, kbase provisioning failures are
+// not fatal: kbased being down costs the agent its knowledge base, not
+// its ability to run — log a warning and start without.
+func (d *Driver) addKBaseEnv(ctx context.Context, project store.Project, agent store.Agent, env map[string]string) map[string]string {
+	if d.kbase == nil {
+		return env
+	}
+	provCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	url, token, err := d.kbase.ProvisionAgentToken(provCtx, agent.ID, agent.Name, project.ID)
+	if err != nil {
+		d.log.Warn("kbase provisioning failed; starting agent without kbase access",
+			"agent", agent.Name, "error", err)
+		return env
+	}
+	if env == nil {
+		env = make(map[string]string, 2)
+	}
+	env["KBASE_URL"] = url
+	env["KBASE_TOKEN"] = token
+	return env
 }
 
 // setStopped best-effort marks the agent stopped on driver exit.

@@ -39,9 +39,24 @@ type Labd struct {
 	AgentAPIAddr string `toml:"agent_api_addr"`
 }
 
-// Kbased holds kbased-specific settings.
+// Kbased holds kbased-specific settings (some consumed by labd, which
+// is a kbased client).
 type Kbased struct {
 	ListenAddr string `toml:"listen_addr"`
+	// URL is where labd reaches kbased from the host. Defaults to
+	// http://<listen_addr>.
+	URL string `toml:"url"`
+	// KbaseURLForAgents is the kbased base URL as reachable from
+	// inside agent containers; labd injects it as KBASE_URL. Defaults
+	// to http://host.docker.internal:<listen port>.
+	KbaseURLForAgents string `toml:"kbase_url_for_agents"`
+	// AdminToken guards kbased's admin API (principal registration,
+	// token mint/revoke). labd authenticates with it when provisioning
+	// agent kbase tokens. Empty disables the admin API — and with it
+	// labd's kbase wiring. Set it to any long random string; it lives
+	// only in lab.toml (gitignored) or the LAB_KBASED_ADMIN_TOKEN env
+	// var, never in the database.
+	AdminToken string `toml:"admin_token"`
 }
 
 // Default returns the built-in configuration, chosen so labd runs with
@@ -60,7 +75,9 @@ func Default() Config {
 			AgentAPIAddr:  "127.0.0.1:7711",
 		},
 		Kbased: Kbased{
-			ListenAddr: "127.0.0.1:7720",
+			ListenAddr:        "127.0.0.1:7720",
+			URL:               "http://127.0.0.1:7720",
+			KbaseURLForAgents: "http://host.docker.internal:7720",
 		},
 	}
 }
@@ -97,6 +114,9 @@ func (c *Config) applyEnv() {
 	setenv(&c.Labd.ClientAPIAddr, "LAB_LABD_CLIENT_API_ADDR")
 	setenv(&c.Labd.AgentAPIAddr, "LAB_LABD_AGENT_API_ADDR")
 	setenv(&c.Kbased.ListenAddr, "LAB_KBASED_LISTEN_ADDR")
+	setenv(&c.Kbased.URL, "LAB_KBASED_URL")
+	setenv(&c.Kbased.KbaseURLForAgents, "LAB_KBASED_KBASE_URL_FOR_AGENTS")
+	setenv(&c.Kbased.AdminToken, "LAB_KBASED_ADMIN_TOKEN")
 }
 
 // SlogLevel parses LogLevel into a slog.Level, defaulting to info for
