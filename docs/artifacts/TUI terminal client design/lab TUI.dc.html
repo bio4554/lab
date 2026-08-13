@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/nocturne-e717d41a-0cd7-4db7-a5f3-df080ab482d6/styles.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  html, body { background: #101120; }
+  body { padding: 48px; width: max-content; min-width: 100%; box-sizing: border-box; }
+  a { color: var(--color-accent); } a:hover { color: var(--color-accent-300); }
+</style>
+</helmet>
+<section style="display:flex;flex-direction:column;gap:24px;margin-bottom:64px">
+  <div style="display:flex;align-items:baseline;gap:16px;font-family:'IBM Plex Mono',monospace">
+    <h4 style="margin:0;color:var(--color-neutral-200)">turn 2 — full screen set, direction <a href="#1c" style="text-decoration:none">1c</a></h4>
+    <span style="font-size:12px;color:var(--color-neutral-600)">flat frame · hairline splits · focus = box + accent edge</span>
+  </div>
+  <div style="display:flex;gap:40px;align-items:flex-start;flex-wrap:wrap">
+
+    <!-- ═══ 2a · Projects + create form ═══ -->
+    <div id="2a" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:baseline;gap:10px;font-family:'IBM Plex Mono',monospace">
+        <span style="font-size:11px;padding:2px 8px;border:1px solid var(--color-accent);border-radius:4px;color:var(--color-accent)">2a</span>
+        <span style="font-size:12px;color:var(--color-neutral-400)">Projects — list + create form (focused)</span>
+      </div>
+      <div style="width:1100px;background:var(--color-bg);border:1px solid var(--color-neutral-800);border-radius:8px;font:13px/1.6 'IBM Plex Mono',monospace;color:var(--color-neutral-300);display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;gap:12px;padding:10px 18px;font-size:12px;color:var(--color-neutral-500)">
+          <span style="color:var(--color-accent);font-weight:600">lab</span>
+          <span><span style="color:var(--color-accent-400)">●</span> labd v0.7.2 · connected · drivers 2</span>
+          <span style="margin-left:auto">127.0.0.1:7788</span>
+        </div>
+        <div style="display:flex;align-items:stretch">
+          <div style="width:250px;flex:none;padding:12px 14px;display:flex;flex-direction:column;gap:2px;font-size:12.5px;border-right:1px solid var(--color-divider)">
+            <div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);margin-bottom:8px">PROJECTS</div>
+            <div style="border-left:2px solid var(--color-accent);margin-left:-14px;padding-left:12px;color:var(--color-accent-100)">▾ omni-refactor <span style="color:var(--color-accent-300)">3</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-accent-400)">●</span> planner <span style="color:var(--color-neutral-600)">running</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-accent-400)">●</span> coder <span style="color:var(--color-neutral-600)">running</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> reviewer <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-200)">▾ docs-site <span style="color:var(--color-neutral-600)">1</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> scribe <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-600)">▸ archive ◌ retired</div>
+          </div>
+          <div style="flex:1;padding:12px 18px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;gap:14px;font-size:11px;color:var(--color-neutral-500)">
+              <span style="color:var(--color-accent-300);background:var(--color-accent-900);padding:2px 8px;border-radius:4px">projects</span>
+              <span style="margin-left:auto;align-self:center">3 projects · 6 agents</span>
+            </div>
+            <div style="display:flex;flex-direction:column;font-size:12.5px">
+              <div style="display:grid;grid-template-columns:170px 1fr 110px 80px 100px;gap:12px;font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);padding:4px 8px;border-bottom:1px solid var(--color-divider)">
+                <span>NAME</span><span>ORIGIN</span><span>STACK</span><span>AGENTS</span><span>CREATED</span>
+              </div>
+              <div style="display:grid;grid-template-columns:170px 1fr 110px 80px 100px;gap:12px;padding:5px 8px;color:var(--color-neutral-200);background:var(--color-accent-900);border-radius:4px">
+                <span>omni-refactor</span><span style="color:var(--color-neutral-400)">~/src/omni</span><span>anthropic</span><span>3</span><span style="color:var(--color-neutral-500)">2026-07-30</span>
+              </div>
+              <div style="display:grid;grid-template-columns:170px 1fr 110px 80px 100px;gap:12px;padding:5px 8px;border-bottom:1px solid var(--color-divider)">
+                <span>docs-site</span><span style="color:var(--color-neutral-500)">github.com/omni/docs-site</span><span>anthropic</span><span>1</span><span style="color:var(--color-neutral-600)">2026-08-02</span>
+              </div>
+              <div style="display:grid;grid-template-columns:170px 1fr 110px 80px 100px;gap:12px;padding:5px 8px;color:var(--color-neutral-600)">
+                <span>archive</span><span>~/src/old-lab</span><span>openai</span><span>2 retired</span><span>2026-06-12</span>
+              </div>
+            </div>
+            <div style="border:1px solid var(--color-accent-700);border-left:2px solid var(--color-accent);border-radius:6px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;max-width:560px">
+              <div style="font-size:10px;letter-spacing:.1em;color:var(--color-accent)">NEW PROJECT</div>
+              <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">
+                <div style="display:flex;gap:10px"><span style="width:70px;color:var(--color-neutral-500)">name</span><span style="flex:1;background:var(--color-surface);border:1px solid var(--color-accent);border-radius:4px;padding:2px 8px;color:var(--color-neutral-200)">billing-svc<span style="color:var(--color-accent)">▏</span></span></div>
+                <div style="display:flex;gap:10px"><span style="width:70px;color:var(--color-neutral-500)">origin</span><span style="flex:1;background:var(--color-surface);border:1px solid var(--color-divider);border-radius:4px;padding:2px 8px;color:var(--color-neutral-600)">path or git URL</span></div>
+                <div style="display:flex;gap:10px;align-items:center"><span style="width:70px;color:var(--color-neutral-500)">stack</span>
+                  <span style="display:inline-flex;border:1px solid var(--color-divider);border-radius:4px;overflow:hidden;font-size:12px">
+                    <span style="padding:2px 10px;color:var(--color-accent-300);box-shadow:inset 0 0 0 1px var(--color-accent)">anthropic</span><span style="padding:2px 10px;border-left:1px solid var(--color-divider);color:var(--color-neutral-500)">openai</span><span style="padding:2px 10px;border-left:1px solid var(--color-divider);color:var(--color-neutral-500)">local</span>
+                  </span>
+                  <span style="font-size:11px;color:var(--color-neutral-600)">from /v1/stacks</span>
+                </div>
+              </div>
+              <div style="font-size:11px;color:var(--color-neutral-600)"><b style="color:var(--color-neutral-400)">enter</b> create · <b style="color:var(--color-neutral-400)">esc</b> cancel</div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;padding:8px 18px;font-size:11px;color:var(--color-neutral-600);border-top:1px solid var(--color-divider)">
+          <span><b style="color:var(--color-neutral-400)">n</b> new project</span><span><b style="color:var(--color-neutral-400)">enter</b> open</span><span><b style="color:var(--color-neutral-400)">tab</b> panes</span><span><b style="color:var(--color-neutral-400)">?</b> help</span><span style="margin-left:auto"><b style="color:var(--color-neutral-400)">q</b> quit</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 2b · Agents + create dialog ═══ -->
+    <div id="2b" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:baseline;gap:10px;font-family:'IBM Plex Mono',monospace">
+        <span style="font-size:11px;padding:2px 8px;border:1px solid var(--color-accent);border-radius:4px;color:var(--color-accent)">2b</span>
+        <span style="font-size:12px;color:var(--color-neutral-400)">Agents — table + create-agent dialog over a dimmed frame</span>
+      </div>
+      <div style="width:1100px;position:relative;background:var(--color-bg);border:1px solid var(--color-neutral-800);border-radius:8px;font:13px/1.6 'IBM Plex Mono',monospace;color:var(--color-neutral-300);display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;gap:12px;padding:10px 18px;font-size:12px;color:var(--color-neutral-500)">
+          <span style="color:var(--color-accent);font-weight:600">lab</span>
+          <span><span style="color:var(--color-accent-400)">●</span> labd v0.7.2 · connected · drivers 2</span>
+          <span style="margin-left:auto">127.0.0.1:7788</span>
+        </div>
+        <div style="display:flex;align-items:stretch">
+          <div style="width:250px;flex:none;padding:12px 14px;display:flex;flex-direction:column;gap:2px;font-size:12.5px;border-right:1px solid var(--color-divider)">
+            <div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);margin-bottom:8px">PROJECTS</div>
+            <div style="border-left:2px solid var(--color-accent);margin-left:-14px;padding-left:12px;color:var(--color-accent-100)">▾ omni-refactor <span style="color:var(--color-accent-300)">3</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-accent-400)">●</span> planner <span style="color:var(--color-neutral-600)">running</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-accent-400)">●</span> coder <span style="color:var(--color-neutral-600)">running</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> reviewer <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-200)">▾ docs-site <span style="color:var(--color-neutral-600)">1</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> scribe <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-600)">▸ archive ◌ retired</div>
+          </div>
+          <div style="flex:1;padding:12px 18px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;gap:14px;font-size:11px;color:var(--color-neutral-500)">
+              <span style="color:var(--color-accent-300);background:var(--color-accent-900);padding:2px 8px;border-radius:4px">agents</span><span style="padding:2px 8px">usage</span>
+              <span style="margin-left:auto;align-self:center">omni-refactor · 3 agents</span>
+            </div>
+            <div style="display:flex;flex-direction:column;font-size:12.5px">
+              <div style="display:grid;grid-template-columns:110px 90px 1fr 110px 150px;gap:12px;font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);padding:4px 8px;border-bottom:1px solid var(--color-divider)">
+                <span>NAME</span><span>STATE</span><span>STATUS</span><span>SESSION</span><span>MODEL</span>
+              </div>
+              <div style="display:grid;grid-template-columns:110px 90px 1fr 110px 150px;gap:12px;padding:5px 8px;border-bottom:1px solid var(--color-divider)">
+                <span style="color:var(--color-neutral-200)">planner</span><span><span style="color:var(--color-accent-400)">●</span> running</span><span style="color:var(--color-neutral-400)">decomposing issue #82</span><span>s_0190</span><span style="color:var(--color-neutral-500)">claude-4.5-opus</span>
+              </div>
+              <div style="display:grid;grid-template-columns:110px 90px 1fr 110px 150px;gap:12px;padding:5px 8px;color:var(--color-neutral-200);background:var(--color-accent-900);border-radius:4px">
+                <span>coder</span><span><span style="color:var(--color-accent-400)">●</span> running</span><span style="color:var(--color-accent-200)">turn 14 · testing store fix</span><span>s_0192</span><span style="color:var(--color-accent-200)">claude-4.5-sonnet</span>
+              </div>
+              <div style="display:grid;grid-template-columns:110px 90px 1fr 110px 150px;gap:12px;padding:5px 8px">
+                <span style="color:var(--color-neutral-200)">reviewer</span><span><span style="color:var(--color-neutral-600)">○</span> idle</span><span style="color:var(--color-neutral-500)">last turn 09:41</span><span>—</span><span style="color:var(--color-neutral-500)">claude-4.5-sonnet</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;padding:8px 18px;font-size:11px;color:var(--color-neutral-600);border-top:1px solid var(--color-divider)">
+          <span><b style="color:var(--color-neutral-400)">n</b> new agent</span><span><b style="color:var(--color-neutral-400)">s</b> start</span><span><b style="color:var(--color-neutral-400)">x</b> stop</span><span><b style="color:var(--color-neutral-400)">r</b> retire</span><span><b style="color:var(--color-neutral-400)">enter</b> transcript</span><span style="margin-left:auto"><b style="color:var(--color-neutral-400)">q</b> quit</span>
+        </div>
+        <div style="position:absolute;inset:0;background:color-mix(in srgb, var(--color-neutral-900) 65%, transparent);display:grid;place-items:center">
+          <div style="width:520px;background:var(--color-surface);border:1px solid var(--color-accent-700);border-left:2px solid var(--color-accent);border-radius:6px;box-shadow:var(--shadow-lg);padding:14px 16px;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:10px;letter-spacing:.1em;color:var(--color-accent)">NEW AGENT · omni-refactor</div>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:12.5px">
+              <div style="display:flex;gap:10px"><span style="width:90px;color:var(--color-neutral-500)">name</span><span style="flex:1;background:var(--color-bg);border:1px solid var(--color-accent);border-radius:4px;padding:2px 8px;color:var(--color-neutral-200)">tester<span style="color:var(--color-accent)">▏</span></span></div>
+              <div style="display:flex;gap:10px"><span style="width:90px;color:var(--color-neutral-500)">role prompt</span><span style="flex:1;background:var(--color-bg);border:1px solid var(--color-divider);border-radius:4px;padding:2px 8px;color:var(--color-neutral-400);min-height:52px">You own the test suite. Keep coverage honest, flag flaky tests, never weaken assertions to pass.</span></div>
+              <div style="display:flex;gap:10px"><span style="width:90px;color:var(--color-neutral-500)">model</span><span style="flex:1;background:var(--color-bg);border:1px solid var(--color-divider);border-radius:4px;padding:2px 8px;color:var(--color-neutral-300)">claude-4.5-sonnet <span style="color:var(--color-neutral-600)">▾</span></span></div>
+              <div style="display:flex;gap:10px;align-items:center"><span style="width:90px;color:var(--color-neutral-500)">credential</span>
+                <span style="display:inline-flex;border:1px solid var(--color-divider);border-radius:4px;overflow:hidden;font-size:12px">
+                  <span style="padding:2px 10px;color:var(--color-accent-300);box-shadow:inset 0 0 0 1px var(--color-accent)">api-key</span><span style="padding:2px 10px;border-left:1px solid var(--color-divider);color:var(--color-neutral-500)">oauth</span>
+                </span>
+              </div>
+            </div>
+            <div style="font-size:11px;color:var(--color-neutral-600)"><b style="color:var(--color-neutral-400)">tab</b> next field · <b style="color:var(--color-neutral-400)">enter</b> create · <b style="color:var(--color-neutral-400)">esc</b> cancel</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 2c · Sessions ═══ -->
+    <div id="2c" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:baseline;gap:10px;font-family:'IBM Plex Mono',monospace">
+        <span style="font-size:11px;padding:2px 8px;border:1px solid var(--color-accent);border-radius:4px;color:var(--color-accent)">2c</span>
+        <span style="font-size:12px;color:var(--color-neutral-400)">Sessions — history; selecting one backfills a read-only transcript</span>
+      </div>
+      <div style="width:1100px;background:var(--color-bg);border:1px solid var(--color-neutral-800);border-radius:8px;font:13px/1.6 'IBM Plex Mono',monospace;color:var(--color-neutral-300);display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;gap:12px;padding:10px 18px;font-size:12px;color:var(--color-neutral-500)">
+          <span style="color:var(--color-accent);font-weight:600">lab</span>
+          <span><span style="color:var(--color-accent-400)">●</span> labd v0.7.2 · connected · drivers 2</span>
+          <span style="margin-left:auto">127.0.0.1:7788</span>
+        </div>
+        <div style="display:flex;align-items:stretch">
+          <div style="width:250px;flex:none;padding:12px 14px;display:flex;flex-direction:column;gap:2px;font-size:12.5px;border-right:1px solid var(--color-divider)">
+            <div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);margin-bottom:8px">PROJECTS</div>
+            <div style="color:var(--color-neutral-200)">▾ omni-refactor <span style="color:var(--color-neutral-600)">3</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-accent-400)">●</span> planner <span style="color:var(--color-neutral-600)">running</span></div>
+            <div style="border-left:2px solid var(--color-accent);margin-left:-14px;padding-left:26px;color:var(--color-accent-100)"><span style="color:var(--color-accent-400)">●</span> coder <span style="color:var(--color-accent-300)">running</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> reviewer <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-200)">▾ docs-site <span style="color:var(--color-neutral-600)">1</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> scribe <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-600)">▸ archive ◌ retired</div>
+          </div>
+          <div style="flex:1;padding:12px 18px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;gap:14px;font-size:11px;color:var(--color-neutral-500)">
+              <span style="padding:2px 8px">transcript</span><span style="color:var(--color-accent-300);background:var(--color-accent-900);padding:2px 8px;border-radius:4px">sessions</span><span style="padding:2px 8px">usage</span>
+              <span style="margin-left:auto;align-self:center">coder · 5 sessions</span>
+            </div>
+            <div style="display:flex;flex-direction:column;font-size:12.5px">
+              <div style="display:grid;grid-template-columns:90px 150px 150px 90px 110px;gap:12px;font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);padding:4px 8px;border-bottom:1px solid var(--color-divider)">
+                <span>SESSION</span><span>SPAN</span><span>END REASON</span><span>EVENTS</span><span>PREV</span>
+              </div>
+              <div style="display:grid;grid-template-columns:90px 150px 150px 90px 110px;gap:12px;padding:5px 8px;border-bottom:1px solid var(--color-divider)">
+                <span style="color:var(--color-neutral-200)">s_0192</span><span>11:52 → <span style="color:var(--color-accent-400)">now</span></span><span style="color:var(--color-accent-400)">▶ running</span><span>214</span><span style="color:var(--color-neutral-500)">s_0187</span>
+              </div>
+              <div style="display:grid;grid-template-columns:90px 150px 150px 90px 110px;gap:12px;padding:5px 8px;color:var(--color-neutral-200);background:var(--color-accent-900);border-radius:4px">
+                <span>s_0187</span><span style="color:var(--color-accent-200)">09:14 → 11:41</span><span style="color:var(--color-accent-200)">completed</span><span style="color:var(--color-accent-200)">612</span><span style="color:var(--color-accent-300)">s_0181</span>
+              </div>
+              <div style="display:grid;grid-template-columns:90px 150px 150px 90px 110px;gap:12px;padding:5px 8px;color:var(--color-neutral-500)">
+                <span>s_0181</span><span>08:02 → 09:10</span><span>compacted</span><span>148</span><span>—</span>
+              </div>
+            </div>
+            <div style="border:1px solid var(--color-neutral-800);border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:5px;font-size:12.5px">
+              <div style="display:flex;gap:10px;align-items:center;font-size:11px">
+                <span style="letter-spacing:.1em;font-size:10px;color:var(--color-neutral-500)">S_0187 · BACKFILL</span>
+                <span style="padding:1px 8px;border-radius:4px;background:var(--color-neutral-900);color:var(--color-neutral-400)">read-only</span>
+              </div>
+              <div><span style="color:var(--color-accent-400)">you ▌</span> <span style="color:var(--color-neutral-300)">Migrate the store to the new event schema.</span> <span style="color:var(--color-neutral-700);font-size:11px">09:14:02</span></div>
+              <div><span style="color:var(--color-accent-2-400)">coder ▌</span> <span style="color:var(--color-neutral-400)">Starting with the wire types, then the migration itself…</span></div>
+              <div style="color:var(--color-neutral-600)">⚙ read_file internal/wire/events.go · 208 lines</div>
+              <div style="color:var(--color-neutral-600)">⚙ bash go build ./… · ✓ · 3.1s</div>
+              <div style="color:var(--color-neutral-600)">… 606 more events · <b style="color:var(--color-neutral-400)">enter</b> open full transcript</div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;padding:8px 18px;font-size:11px;color:var(--color-neutral-600);border-top:1px solid var(--color-divider)">
+          <span><b style="color:var(--color-neutral-400)">↑↓</b> select</span><span><b style="color:var(--color-neutral-400)">enter</b> open</span><span><b style="color:var(--color-neutral-400)">t</b> transcript</span><span><b style="color:var(--color-neutral-400)">u</b> usage</span><span style="margin-left:auto"><b style="color:var(--color-neutral-400)">q</b> quit</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 2d · Usage ═══ -->
+    <div id="2d" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:baseline;gap:10px;font-family:'IBM Plex Mono',monospace">
+        <span style="font-size:11px;padding:2px 8px;border:1px solid var(--color-accent);border-radius:4px;color:var(--color-accent)">2d</span>
+        <span style="font-size:12px;color:var(--color-neutral-400)">Usage — rollups per agent, hour / today / total</span>
+      </div>
+      <div style="width:1100px;background:var(--color-bg);border:1px solid var(--color-neutral-800);border-radius:8px;font:13px/1.6 'IBM Plex Mono',monospace;color:var(--color-neutral-300);display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;gap:12px;padding:10px 18px;font-size:12px;color:var(--color-neutral-500)">
+          <span style="color:var(--color-accent);font-weight:600">lab</span>
+          <span><span style="color:var(--color-accent-400)">●</span> labd v0.7.2 · connected · drivers 2</span>
+          <span style="margin-left:auto">127.0.0.1:7788</span>
+        </div>
+        <div style="display:flex;align-items:stretch">
+          <div style="width:250px;flex:none;padding:12px 14px;display:flex;flex-direction:column;gap:2px;font-size:12.5px;border-right:1px solid var(--color-divider)">
+            <div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);margin-bottom:8px">PROJECTS</div>
+            <div style="border-left:2px solid var(--color-accent);margin-left:-14px;padding-left:12px;color:var(--color-accent-100)">▾ omni-refactor <span style="color:var(--color-accent-300)">3</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-accent-400)">●</span> planner <span style="color:var(--color-neutral-600)">running</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-accent-400)">●</span> coder <span style="color:var(--color-neutral-600)">running</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> reviewer <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-200)">▾ docs-site <span style="color:var(--color-neutral-600)">1</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> scribe <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-600)">▸ archive ◌ retired</div>
+          </div>
+          <div style="flex:1;padding:12px 18px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;gap:14px;font-size:11px;color:var(--color-neutral-500)">
+              <span style="padding:2px 8px">agents</span><span style="color:var(--color-accent-300);background:var(--color-accent-900);padding:2px 8px;border-radius:4px">usage</span>
+              <span style="margin-left:auto;align-self:center">omni-refactor · GET /v1/usage</span>
+            </div>
+            <div style="display:flex;flex-direction:column;font-size:12.5px">
+              <div style="display:grid;grid-template-columns:110px 1fr 1fr 1.3fr;gap:12px;font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);padding:4px 8px">
+                <span></span><span>LAST HOUR</span><span>TODAY</span><span>TOTAL</span>
+              </div>
+              <div style="display:grid;grid-template-columns:110px 1fr 1fr 1.3fr;gap:12px;font-size:10px;letter-spacing:.06em;color:var(--color-neutral-700);padding:0 8px 4px;border-bottom:1px solid var(--color-divider)">
+                <span>AGENT</span><span>tok in/out · cost</span><span>tok in/out · cost</span><span>turns · tok in/out · cost</span>
+              </div>
+              <div style="display:grid;grid-template-columns:110px 1fr 1fr 1.3fr;gap:12px;padding:5px 8px;border-bottom:1px solid var(--color-divider)">
+                <span style="color:var(--color-neutral-200)">planner</span><span>18.2k / 3.1k · <span style="color:var(--color-neutral-200)">$0.41</span></span><span>112k / 19k · <span style="color:var(--color-neutral-200)">$2.63</span></span><span style="color:var(--color-neutral-400)">96 · 1.4M / 226k · <span style="color:var(--color-neutral-200)">$31.80</span></span>
+              </div>
+              <div style="display:grid;grid-template-columns:110px 1fr 1fr 1.3fr;gap:12px;padding:5px 8px;border-bottom:1px solid var(--color-divider)">
+                <span style="color:var(--color-neutral-200)">coder</span><span>64.8k / 11.9k · <span style="color:var(--color-neutral-200)">$0.97</span></span><span>402k / 71k · <span style="color:var(--color-neutral-200)">$6.10</span></span><span style="color:var(--color-neutral-400)">311 · 5.2M / 890k · <span style="color:var(--color-neutral-200)">$78.44</span></span>
+              </div>
+              <div style="display:grid;grid-template-columns:110px 1fr 1fr 1.3fr;gap:12px;padding:5px 8px;border-bottom:1px solid var(--color-divider)">
+                <span style="color:var(--color-neutral-200)">reviewer</span><span style="color:var(--color-neutral-600)">— · —</span><span>38k / 6.2k · <span style="color:var(--color-neutral-200)">$0.71</span></span><span style="color:var(--color-neutral-400)">44 · 610k / 98k · <span style="color:var(--color-neutral-200)">$9.12</span></span>
+              </div>
+              <div style="display:grid;grid-template-columns:110px 1fr 1fr 1.3fr;gap:12px;padding:6px 8px;color:var(--color-neutral-200)">
+                <span style="color:var(--color-accent-300)">Σ project</span><span>83k / 15k · $1.38</span><span>552k / 96.2k · $9.44</span><span>451 · 7.2M / 1.2M · $119.36</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;padding:8px 18px;font-size:11px;color:var(--color-neutral-600);border-top:1px solid var(--color-divider)">
+          <span><b style="color:var(--color-neutral-400)">a</b> agents</span><span><b style="color:var(--color-neutral-400)">g</b> group by project</span><span><b style="color:var(--color-neutral-400)">R</b> refresh</span><span style="margin-left:auto"><b style="color:var(--color-neutral-400)">q</b> quit</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 2e · Daemon down ═══ -->
+    <div id="2e" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:baseline;gap:10px;font-family:'IBM Plex Mono',monospace">
+        <span style="font-size:11px;padding:2px 8px;border:1px solid var(--color-accent);border-radius:4px;color:var(--color-accent)">2e</span>
+        <span style="font-size:12px;color:var(--color-neutral-400)">Daemon down — degraded state, auto-retry; content dims but stays</span>
+      </div>
+      <div style="width:1100px;background:var(--color-bg);border:1px solid var(--color-neutral-800);border-radius:8px;font:13px/1.6 'IBM Plex Mono',monospace;color:var(--color-neutral-300);display:flex;flex-direction:column;overflow:hidden;position:relative">
+        <div style="display:flex;gap:12px;padding:10px 18px;font-size:12px;color:var(--color-neutral-500)">
+          <span style="color:var(--color-accent);font-weight:600">lab</span>
+          <span><span style="color:var(--color-neutral-600)">◌</span> labd unreachable · reconnecting</span>
+          <span style="margin-left:auto">127.0.0.1:7788</span>
+        </div>
+        <div style="display:flex;align-items:stretch;opacity:.35">
+          <div style="width:250px;flex:none;padding:12px 14px;display:flex;flex-direction:column;gap:2px;font-size:12.5px;border-right:1px solid var(--color-divider)">
+            <div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);margin-bottom:8px">PROJECTS</div>
+            <div style="color:var(--color-neutral-200)">▾ omni-refactor <span style="color:var(--color-neutral-600)">3</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)">● planner running</div>
+            <div style="border-left:2px solid var(--color-accent);margin-left:-14px;padding-left:26px;color:var(--color-accent-100)">● coder running</div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)">○ reviewer idle</div>
+            <div style="margin-top:6px;color:var(--color-neutral-200)">▾ docs-site <span style="color:var(--color-neutral-600)">1</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)">○ scribe idle</div>
+          </div>
+          <div style="flex:1;padding:12px 18px;display:flex;flex-direction:column;gap:6px;font-size:12.5px;min-height:280px">
+            <div><span style="color:var(--color-accent-400)">you ▌</span> Fix the failing store test and re-run the suite.</div>
+            <div><span style="color:var(--color-accent-2-400)">coder ▌</span> The failure is in TestRetireAgent — patching store.go.</div>
+            <div style="color:var(--color-neutral-500)">⚙ bash go test ./internal/store/… · ✓ pass · 1.8s</div>
+            <div style="color:var(--color-neutral-600)">── stream interrupted at 12:07:44 · resume from event 4812 ──</div>
+          </div>
+        </div>
+        <div style="position:absolute;inset:0;display:grid;place-items:center">
+          <div style="width:460px;background:var(--color-surface);border:1px solid var(--color-neutral-700);border-left:2px solid var(--color-accent);border-radius:6px;box-shadow:var(--shadow-lg);padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+            <div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-400)">✕ CONNECTION LOST</div>
+            <div style="font-size:12.5px;color:var(--color-neutral-300)">labd at 127.0.0.1:7788 stopped responding.</div>
+            <div style="font-size:12.5px;color:var(--color-neutral-500)">retrying in 3s · attempt 4 · last event id 4812 — the stream resumes without gaps once the daemon returns.</div>
+            <div style="font-size:11px;color:var(--color-neutral-600);margin-top:4px"><b style="color:var(--color-neutral-400)">r</b> retry now · <b style="color:var(--color-neutral-400)">a</b> edit address · <b style="color:var(--color-neutral-400)">q</b> quit</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;padding:8px 18px;font-size:11px;color:var(--color-neutral-600);border-top:1px solid var(--color-divider)">
+          <span><b style="color:var(--color-neutral-400)">r</b> retry</span><span><b style="color:var(--color-neutral-400)">a</b> address</span><span style="margin-left:auto"><b style="color:var(--color-neutral-400)">q</b> quit</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+<section style="display:flex;flex-direction:column;gap:24px">
+  <div style="display:flex;align-items:baseline;gap:16px;font-family:'IBM Plex Mono',monospace">
+    <h4 style="margin:0;color:var(--color-neutral-200)">lab — TUI chrome directions</h4>
+    <span style="font-size:12px;color:var(--color-neutral-600)">turn 1 · same screen, three chrome treatments · Nocturne palette on IBM Plex Mono</span>
+  </div>
+  <div style="display:flex;gap:40px;align-items:flex-start;flex-wrap:wrap">
+
+    <!-- ═══ 1a · Boxed panes ═══ -->
+    <div id="1a" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:baseline;gap:10px;font-family:'IBM Plex Mono',monospace">
+        <span style="font-size:11px;padding:2px 8px;border:1px solid var(--color-accent);border-radius:4px;color:var(--color-accent)">1a</span>
+        <span style="font-size:12px;color:var(--color-neutral-400)">Boxed panes — every region framed, titles set in the border (lipgloss rounded)</span>
+      </div>
+      <div style="width:1100px;background:var(--color-bg);border:1px solid var(--color-neutral-800);border-radius:8px;font:13px/1.6 'IBM Plex Mono',monospace;color:var(--color-neutral-300);padding:14px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;gap:12px;padding:0 4px;font-size:12px;color:var(--color-neutral-500)">
+          <span style="color:var(--color-accent);font-weight:600">lab</span>
+          <span><span style="color:var(--color-accent-400)">●</span> labd v0.7.2 · connected · drivers 2</span>
+          <span style="margin-left:auto">127.0.0.1:7788</span>
+        </div>
+        <div style="display:flex;gap:10px;align-items:stretch">
+          <div style="position:relative;width:250px;flex:none;border:1px solid var(--color-neutral-800);border-radius:6px;padding:14px 10px 10px">
+            <span style="position:absolute;top:-9px;left:10px;background:var(--color-bg);padding:0 6px;font-size:10px;letter-spacing:.1em;color:var(--color-neutral-500)">PROJECTS</span>
+            <div style="display:flex;flex-direction:column;gap:2px;font-size:12.5px">
+              <div style="color:var(--color-neutral-200)">▾ omni-refactor <span style="color:var(--color-neutral-600)">3</span></div>
+              <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-accent-400)">●</span> planner <span style="color:var(--color-neutral-600)">running</span></div>
+              <div style="padding-left:14px;background:var(--color-accent-900);border-radius:4px;color:var(--color-accent-100)"><span style="color:var(--color-accent-400)">●</span> coder <span style="color:var(--color-accent-300)">running</span></div>
+              <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> reviewer <span style="color:var(--color-neutral-600)">idle</span></div>
+              <div style="margin-top:6px;color:var(--color-neutral-200)">▾ docs-site <span style="color:var(--color-neutral-600)">1</span></div>
+              <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> scribe <span style="color:var(--color-neutral-600)">idle</span></div>
+              <div style="margin-top:6px;color:var(--color-neutral-600)">▸ archive <span>◌ retired</span></div>
+            </div>
+          </div>
+          <div style="position:relative;flex:1;border:1px solid var(--color-accent-700);border-radius:6px;padding:14px 12px 10px;display:flex;flex-direction:column;gap:8px">
+            <span style="position:absolute;top:-9px;left:10px;background:var(--color-bg);padding:0 6px;font-size:10px;letter-spacing:.1em;color:var(--color-accent)">TRANSCRIPT · coder</span>
+            <div style="display:flex;gap:14px;font-size:11px;color:var(--color-neutral-500)">
+              <span style="color:var(--color-accent-300)">transcript</span><span>sessions</span><span>usage</span>
+              <span style="margin-left:auto">session s_0192 · turn 14 <span style="color:var(--color-accent-400)">▶ running</span></span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;font-size:12.5px">
+              <div style="color:var(--color-neutral-600);font-size:11px">── session s_0192 · started 11:52 ─────────────────────</div>
+              <div><span style="color:var(--color-accent-400)">you ▌</span> <span style="color:var(--color-neutral-200)">Fix the failing store test and re-run the suite.</span> <span style="color:var(--color-neutral-700);font-size:11px">12:04:31</span></div>
+              <div><span style="color:var(--color-accent-2-400)">coder ▌</span> The failure is in TestRetireAgent — the retire path drops the end_reason before the last event flushes. Patching store.go.</div>
+              <div style="color:var(--color-neutral-500)">⚙ read_file <span style="color:var(--color-neutral-400)">internal/store/store_test.go</span> · 312 lines</div>
+              <div style="color:var(--color-neutral-500)">⚙ edit <span style="color:var(--color-neutral-400)">internal/store/store.go</span> · +14 −3</div>
+              <div style="color:var(--color-neutral-500)">⚙ bash <span style="color:var(--color-neutral-400)">go test ./internal/store/…</span> · <span style="color:var(--color-accent-300)">✓ pass</span> · 1.8s</div>
+              <div><span style="color:var(--color-accent-2-400)">coder ▌</span> All green. The fix orders the flush before the state transition.</div>
+              <div style="color:var(--color-accent-300)">✔ done · 14.2s · 3.2k → 612 tok · $0.018</div>
+              <div style="color:var(--color-neutral-700)">· driver_debug seq=812 {"kind":"driver_debug","payload":…}</div>
+            </div>
+            <div style="position:relative;margin-top:4px;border:1px solid var(--color-neutral-700);border-radius:6px;padding:8px 10px;display:flex;gap:8px;align-items:center">
+              <span style="position:absolute;top:-9px;left:10px;background:var(--color-bg);padding:0 6px;font-size:10px;letter-spacing:.1em;color:var(--color-neutral-500)">COMPOSER</span>
+              <span style="color:var(--color-accent)">&gt;</span>
+              <span style="color:var(--color-neutral-600)">message coder — enter to send · ctrl+j newline</span>
+              <span style="margin-left:auto;font-size:11px;padding:1px 8px;border-radius:4px;background:var(--color-neutral-900);color:var(--color-neutral-400)">turn 15 · queued</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;padding:0 4px;font-size:11px;color:var(--color-neutral-600)">
+          <span><b style="color:var(--color-neutral-400)">tab</b> panes</span><span><b style="color:var(--color-neutral-400)">enter</b> send</span><span><b style="color:var(--color-neutral-400)">n</b> new agent</span><span><b style="color:var(--color-neutral-400)">s</b> start</span><span><b style="color:var(--color-neutral-400)">x</b> stop</span><span><b style="color:var(--color-neutral-400)">r</b> retire</span><span><b style="color:var(--color-neutral-400)">u</b> usage</span><span><b style="color:var(--color-neutral-400)">?</b> help</span><span style="margin-left:auto"><b style="color:var(--color-neutral-400)">q</b> quit</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 1b · Flat quiet ═══ -->
+    <div id="1b" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:baseline;gap:10px;font-family:'IBM Plex Mono',monospace">
+        <span style="font-size:11px;padding:2px 8px;border:1px solid var(--color-accent);border-radius:4px;color:var(--color-accent)">1b</span>
+        <span style="font-size:12px;color:var(--color-neutral-400)">Flat quiet — no boxes; tone, whitespace and fading rules do the separation</span>
+      </div>
+      <div style="width:1100px;background:var(--color-bg);border:1px solid var(--color-neutral-800);border-radius:8px;font:13px/1.6 'IBM Plex Mono',monospace;color:var(--color-neutral-300);display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;gap:12px;padding:10px 18px;font-size:12px;color:var(--color-neutral-500);background:linear-gradient(to right, transparent, var(--color-divider) 48px, var(--color-divider) calc(100% - 48px), transparent) no-repeat bottom / 100% 1px">
+          <span style="color:var(--color-accent);font-weight:600">lab</span>
+          <span><span style="color:var(--color-accent-400)">●</span> labd v0.7.2 · connected · drivers 2</span>
+          <span style="margin-left:auto">127.0.0.1:7788</span>
+        </div>
+        <div style="display:flex;align-items:stretch">
+          <div style="width:250px;flex:none;padding:16px 14px;display:flex;flex-direction:column;gap:2px;font-size:12.5px">
+            <div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);margin-bottom:8px">PROJECTS</div>
+            <div style="color:var(--color-neutral-200)">▾ omni-refactor <span style="color:var(--color-neutral-600)">3</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-accent-400)">●</span> planner <span style="color:var(--color-neutral-600)">running</span></div>
+            <div style="padding-left:14px;background:var(--color-neutral-200);color:var(--color-bg);margin:0 -6px;padding-right:6px;padding-left:20px;border-radius:2px"><span>●</span> coder <span style="opacity:.6">running</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> reviewer <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-200)">▾ docs-site <span style="color:var(--color-neutral-600)">1</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> scribe <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-600)">▸ archive ◌ retired</div>
+          </div>
+          <div style="flex:1;padding:16px 18px;display:flex;flex-direction:column;gap:10px;background:var(--color-surface)">
+            <div style="display:flex;gap:14px;font-size:11px;color:var(--color-neutral-500);padding-bottom:6px;background:linear-gradient(to right, transparent, var(--color-divider) 48px, var(--color-divider) calc(100% - 48px), transparent) no-repeat bottom / 100% 1px">
+              <span style="color:var(--color-accent-300)">TRANSCRIPT</span><span>SESSIONS</span><span>USAGE</span>
+              <span style="margin-left:auto">coder · s_0192 · turn 14 <span style="color:var(--color-accent-400)">▶ running</span></span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;font-size:12.5px">
+              <div style="color:var(--color-neutral-600);font-size:11px">session s_0192 · started 11:52</div>
+              <div><span style="color:var(--color-accent-400)">you ▌</span> <span style="color:var(--color-neutral-200)">Fix the failing store test and re-run the suite.</span> <span style="color:var(--color-neutral-700);font-size:11px">12:04:31</span></div>
+              <div><span style="color:var(--color-accent-2-400)">coder ▌</span> The failure is in TestRetireAgent — the retire path drops the end_reason before the last event flushes. Patching store.go.</div>
+              <div style="color:var(--color-neutral-500)">⚙ read_file <span style="color:var(--color-neutral-400)">internal/store/store_test.go</span> · 312 lines</div>
+              <div style="color:var(--color-neutral-500)">⚙ edit <span style="color:var(--color-neutral-400)">internal/store/store.go</span> · +14 −3</div>
+              <div style="color:var(--color-neutral-500)">⚙ bash <span style="color:var(--color-neutral-400)">go test ./internal/store/…</span> · <span style="color:var(--color-accent-300)">✓ pass</span> · 1.8s</div>
+              <div><span style="color:var(--color-accent-2-400)">coder ▌</span> All green. The fix orders the flush before the state transition.</div>
+              <div style="color:var(--color-accent-300)">✔ done · 14.2s · 3.2k → 612 tok · $0.018</div>
+              <div style="color:var(--color-neutral-700)">· driver_debug seq=812 {"kind":"driver_debug","payload":…}</div>
+            </div>
+            <div style="margin-top:4px;display:flex;gap:8px;align-items:center;padding-top:8px;background:linear-gradient(to right, transparent, var(--color-divider) 48px, var(--color-divider) calc(100% - 48px), transparent) no-repeat top / 100% 1px">
+              <span style="color:var(--color-accent)">&gt;</span>
+              <span style="color:var(--color-neutral-600)">message coder — enter to send · ctrl+j newline</span>
+              <span style="margin-left:auto;font-size:11px;color:var(--color-neutral-500)">turn 15 · queued</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;padding:8px 18px;font-size:11px;color:var(--color-neutral-600);background:linear-gradient(to right, transparent, var(--color-divider) 48px, var(--color-divider) calc(100% - 48px), transparent) no-repeat top / 100% 1px">
+          <span><b style="color:var(--color-neutral-400)">tab</b> panes</span><span><b style="color:var(--color-neutral-400)">enter</b> send</span><span><b style="color:var(--color-neutral-400)">n</b> new agent</span><span><b style="color:var(--color-neutral-400)">s</b> start</span><span><b style="color:var(--color-neutral-400)">x</b> stop</span><span><b style="color:var(--color-neutral-400)">r</b> retire</span><span><b style="color:var(--color-neutral-400)">u</b> usage</span><span><b style="color:var(--color-neutral-400)">?</b> help</span><span style="margin-left:auto"><b style="color:var(--color-neutral-400)">q</b> quit</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ 1c · Mixed ═══ -->
+    <div id="1c" style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;align-items:baseline;gap:10px;font-family:'IBM Plex Mono',monospace">
+        <span style="font-size:11px;padding:2px 8px;border:1px solid var(--color-accent);border-radius:4px;color:var(--color-accent)">1c</span>
+        <span style="font-size:12px;color:var(--color-neutral-400)">Mixed — flat frame, hairline splits; only the focused element gets a box + accent edge</span>
+      </div>
+      <div style="width:1100px;background:var(--color-bg);border:1px solid var(--color-neutral-800);border-radius:8px;font:13px/1.6 'IBM Plex Mono',monospace;color:var(--color-neutral-300);display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;gap:12px;padding:10px 18px;font-size:12px;color:var(--color-neutral-500)">
+          <span style="color:var(--color-accent);font-weight:600">lab</span>
+          <span><span style="color:var(--color-accent-400)">●</span> labd v0.7.2 · connected · drivers 2</span>
+          <span style="margin-left:auto">127.0.0.1:7788</span>
+        </div>
+        <div style="display:flex;align-items:stretch">
+          <div style="width:250px;flex:none;padding:12px 14px;display:flex;flex-direction:column;gap:2px;font-size:12.5px;border-right:1px solid var(--color-divider)">
+            <div style="font-size:10px;letter-spacing:.1em;color:var(--color-neutral-600);margin-bottom:8px">PROJECTS</div>
+            <div style="color:var(--color-neutral-200)">▾ omni-refactor <span style="color:var(--color-neutral-600)">3</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-accent-400)">●</span> planner <span style="color:var(--color-neutral-600)">running</span></div>
+            <div style="padding-left:12px;border-left:2px solid var(--color-accent);margin-left:-14px;padding-left:26px;color:var(--color-accent-100)"><span style="color:var(--color-accent-400)">●</span> coder <span style="color:var(--color-accent-300)">running</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> reviewer <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-200)">▾ docs-site <span style="color:var(--color-neutral-600)">1</span></div>
+            <div style="padding-left:14px;color:var(--color-neutral-400)"><span style="color:var(--color-neutral-600)">○</span> scribe <span style="color:var(--color-neutral-600)">idle</span></div>
+            <div style="margin-top:6px;color:var(--color-neutral-600)">▸ archive ◌ retired</div>
+          </div>
+          <div style="flex:1;padding:12px 18px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;gap:14px;font-size:11px;color:var(--color-neutral-500)">
+              <span style="color:var(--color-accent-300);background:var(--color-accent-900);padding:2px 8px;border-radius:4px">transcript</span><span style="padding:2px 8px">sessions</span><span style="padding:2px 8px">usage</span>
+              <span style="margin-left:auto;align-self:center">coder · s_0192 · turn 14 <span style="color:var(--color-accent-400)">▶ running</span></span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;font-size:12.5px">
+              <div style="color:var(--color-neutral-600);font-size:11px">── session s_0192 · started 11:52 ─────────────────────</div>
+              <div><span style="color:var(--color-accent-400)">you ▌</span> <span style="color:var(--color-neutral-200)">Fix the failing store test and re-run the suite.</span> <span style="color:var(--color-neutral-700);font-size:11px">12:04:31</span></div>
+              <div><span style="color:var(--color-accent-2-400)">coder ▌</span> The failure is in TestRetireAgent — the retire path drops the end_reason before the last event flushes. Patching store.go.</div>
+              <div style="color:var(--color-neutral-500)">⚙ read_file <span style="color:var(--color-neutral-400)">internal/store/store_test.go</span> · 312 lines</div>
+              <div style="color:var(--color-neutral-500)">⚙ edit <span style="color:var(--color-neutral-400)">internal/store/store.go</span> · +14 −3</div>
+              <div style="color:var(--color-neutral-500)">⚙ bash <span style="color:var(--color-neutral-400)">go test ./internal/store/…</span> · <span style="color:var(--color-accent-300)">✓ pass</span> · 1.8s</div>
+              <div><span style="color:var(--color-accent-2-400)">coder ▌</span> All green. The fix orders the flush before the state transition.</div>
+              <div style="color:var(--color-accent-300)">✔ done · 14.2s · 3.2k → 612 tok · $0.018</div>
+              <div style="color:var(--color-neutral-700)">· driver_debug seq=812 {"kind":"driver_debug","payload":…}</div>
+            </div>
+            <div style="margin-top:4px;border:1px solid var(--color-accent-700);border-left:2px solid var(--color-accent);border-radius:6px;padding:8px 10px;display:flex;gap:8px;align-items:center">
+              <span style="color:var(--color-accent)">&gt;</span>
+              <span style="color:var(--color-neutral-600)">message coder — enter to send · ctrl+j newline</span>
+              <span style="margin-left:auto;font-size:11px;padding:1px 8px;border-radius:4px;background:var(--color-neutral-900);color:var(--color-neutral-400)">turn 15 · queued</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;padding:8px 18px;font-size:11px;color:var(--color-neutral-600);border-top:1px solid var(--color-divider)">
+          <span><b style="color:var(--color-neutral-400)">tab</b> panes</span><span><b style="color:var(--color-neutral-400)">enter</b> send</span><span><b style="color:var(--color-neutral-400)">n</b> new agent</span><span><b style="color:var(--color-neutral-400)">s</b> start</span><span><b style="color:var(--color-neutral-400)">x</b> stop</span><span><b style="color:var(--color-neutral-400)">r</b> retire</span><span><b style="color:var(--color-neutral-400)">u</b> usage</span><span><b style="color:var(--color-neutral-400)">?</b> help</span><span style="margin-left:auto"><b style="color:var(--color-neutral-400)">q</b> quit</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

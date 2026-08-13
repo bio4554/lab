@@ -1,3 +1,4 @@
 bin/
 lab.toml
+.DS_Store
 .idea/

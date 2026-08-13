@@ -37,32 +37,7 @@ backoff) exposing a channel of `wire.Event`. Unit-test against
 
 ### 2. `cmd/lab` — the TUI
 
-**Design reference**: `docs/artifacts/TUI terminal client design/lab
-TUI.dc.html` — HTML mockups (open in a browser) commissioned for this
-phase. Treat them as the design direction, not a pixel spec:
-
-- **Follow**: chrome direction **1c** (flat frame, hairline splits,
-  focused element gets a box + accent edge); the overall layout
-  (header status line / left project+agent tree / tabbed main pane
-  (transcript·sessions·usage) / footer key hints); the transcript
-  rendering vocabulary in 1c (`you ▌` / `<agent> ▌` role gutters, `⚙`
-  tool one-liners with name + arg summary + outcome + duration, `✔`
-  result line with duration/tokens/cost, dim `·`-prefixed raw lines
-  for unknown kinds, composer with hint line and queued-turn
-  indicator); the modal-over-dimmed-frame create dialogs (2a/2b); the
-  sessions table with backfill preview (2c); the daemon-down state
-  (2e); the keybinding scheme in the footers.
-- **Ignore the fictional data** — the designer only saw the handoff:
-  stacks are `base|go|node|python|rust` (not anthropic/openai/local),
-  the client API port default is 7710 (not 7788), version strings and
-  model names come from the real daemon, session ids are UUIDs (short
-  prefix display like `019ff8…` is a fine adaptation of `s_0192`).
-- It's HTML/CSS: translate the *proportions and hierarchy* into
-  lipgloss (borders, padding, color roles), don't chase visual
-  parity. Where the mockup and a bubbletea idiom conflict, the idiom
-  wins — note the deviation in your report.
-
-Views (the mockups cover each; adapt as sensible):
+bubbletea + lipgloss. Views (suggested layout, adapt as sensible):
 
 - **Projects** — list with agent counts; create form (name, origin
   path/URL, stack picker populated from the API).
