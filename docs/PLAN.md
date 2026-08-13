@@ -57,8 +57,8 @@ Ground rules for impl agents (repeated in every handoff):
 | 1     | lab schema & store layer               | **done** (82ce39f, merged) | phase-01-store | 0          |
 | 2     | stream-json codec                      | **done** (776c569, merged) | phase-02-streamjson | 0          |
 | 3     | gitrepo: projects, worktrees           | **done** (a0a8fa5, merged) | phase-03-gitrepo | 0          |
-| 4     | Docker runtime & stack images          | handed off | phase-04-runtime | 0          |
-| 5     | Claude driver: sessions, turns, events | pending | —      | 1,2,3,4    |
+| 4     | Docker runtime & stack images          | **done** (2355d94, merged) | phase-04-runtime | 0          |
+| 5     | Claude driver: sessions, turns, events | handed off | phase-05-claude | 1,2,3,4    |
 | 6     | labd APIs & agent tokens               | pending | —      | 5          |
 | 7     | TUI v1                                 | pending | —      | 6          |
 | 8     | Credentials & budgets                  | pending | —      | 6          |
