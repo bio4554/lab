@@ -194,26 +194,48 @@ replayable for debugging.
 
 ## Credentials & budgets
 
-- `credentials(id, kind api_key|oauth_token, secret_enc, label, expires_at,
-  status, created_at)` — encrypted at rest (age/NaCl secretbox, key in a
-  root-owned file or OS keychain).
-- **Acquisition** is a client-side flow (needs a browser): the TUI shells
-  out to `claude setup-token` (subscription; one-year token, Pro/Max/Team/
-  Enterprise only) or accepts a pasted API key, then registers it with
-  `labd`.
-- Each agent references a credential (default from project). Which agents
-  ride the subscription vs. an API key is an explicit per-agent routing
-  choice.
-- **Budgets are per-agent and per-credential, and kind-aware**:
-  - API key: real USD from `result` events → daily/total spend caps.
-  - Subscription token: no marginal cost; the constraint is the plan's
-    shared rate limits (5-hour windows + weekly caps). Caps on
-    tokens/turns per window, plus **rate-limit detection**: on limit
-    errors, pause all agents on that credential and auto-resume when the
-    window resets — never let loops spin against 429s.
-- Enforcement happens in `labd` before each turn dispatch. Rollups
-  (`usage_rollups(credential_id, agent_id, window_start, tokens_in,
-  tokens_out, cost_usd, turns)`) power TUI monitoring views.
+- `credentials(id, kind api_key|oauth_token, secret_enc, label, status,
+  expires_at, budget jsonb, limited_until, created_at)` — encrypted at
+  rest with NaCl secretbox; the 32-byte key lives at
+  `<data_dir>/secret.key` (created 0600 on first use; labd refuses to
+  start on a key file readable beyond its owner). Plaintext exists only
+  in memory and the agent container's env; no API response ever carries
+  it (asserted on wire bytes in tests).
+- **Acquisition**: `claude setup-token` in any terminal (subscription;
+  one-year token — the default expiry) or a pasted API key, registered
+  via `POST /v1/credentials` (secret in the body — acceptable because
+  the client API is localhost-only) or `labctl cred add` (secret on
+  stdin). Expiry is swept every 30s and checked lazily on use;
+  extending/clearing it reactivates an expired credential.
+- Each agent references a credential by id (`credential_id` at create,
+  `PUT .../credential` to rebind; applies at next container provision).
+  Which agents ride the subscription vs. an API key is an explicit
+  per-agent routing choice. The Phase 6 `credential_kind` API field
+  survives as a compat shim: it binds the only stored credential of
+  that kind.
+- **Budget contract** (`agents.budget` and `credentials.budget` jsonb):
+  `{"max_cost_usd_day": 5.0, "max_tokens_day": 2000000,
+  "max_turns_hour": 30}` — all keys optional, unknown keys rejected at
+  set time. Windows are UTC (calendar day / clock hour, the rollup
+  grain). An agent budget is evaluated against the agent's own usage, a
+  credential budget against the credential's usage across all its
+  agents; every set limit must pass (most restrictive wins).
+- **Enforcement** is the driver's `TurnGate` seam (`budget.Gate`),
+  consulted between peek and claim: a denied turn stays queued —
+  never errored — and delivers the moment the gate opens (budget
+  raise, window rollover, reset passing, manual resume). The gate
+  re-reads agent + credential rows per check so changes apply without
+  a driver restart.
+- **Rate-limit detection**: a limited `rate_limit_event` (or an
+  unmistakably limit-shaped `is_error` result, default 5-minute hold)
+  records `limited_until` on the credential and pauses every
+  idle/working agent riding it — never let loops spin against 429s.
+  Resume is threefold: the gate's clock, labd's 30s sweep, or
+  `POST /v1/credentials/{id}/resume`.
+- Rollups (`usage_rollups(credential_id, agent_id, window_start,
+  tokens_in, tokens_out, cost_usd, turns)`) power `GET /v1/usage`
+  (per-credential and per-agent windows + live gate verdicts) and the
+  TUI monitoring views.
 
 ## lab schema (Postgres)
 

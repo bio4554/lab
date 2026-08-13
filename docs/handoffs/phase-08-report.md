@@ -323,3 +323,26 @@ left in place per convention.
 4. `PUT .../agents/{a}/credential` applies at next provision; a hosted
    driver keeps its current container env until restart — acceptable
    now, worth a driver poke when Phase 11 automates rebinding.
+
+---
+
+## Orchestrator review (2026-08-12) — closed
+
+Full diff read; `make check` green; changed packages pass `-race
+-count=1` twice; diff secret-scan clean (only fabricated test strings).
+Live demo re-run end-to-end with a real token: credential-free labd
+env → `cred add` from stdin (+1y default expiry) → `credential_id`-bound
+agent ran a turn → `secret_enc` = 148-byte ciphertext →
+`max_turns_hour: 1` held the second turn queued (deny reason +
+retry_after in `/v1/usage`; exactly one "turn held by budget gate" log
+line across continuous polling) → raise → released to done → leak scan
+0 hits (logs, events, credential list, usage; container env held
+exactly one credential var) → SIGTERM clean shutdown → 0644 key file
+refused at startup with the chmod hint.
+
+Accepted deviations: gate re-reads rows per check (required by the
+raise-releases acceptance), labctl-only onboarding (TUI screens
+explicitly out of scope), `credential_kind` shim now binding stored
+credentials (old env-passthrough rows fail loudly — deliberate).
+DESIGN.md's Credentials & budgets section updated to the as-built
+contract. Merged as 664ecd3.
