@@ -296,22 +296,45 @@ func (h *harness) teardown() {
 	}
 }
 
-// removeAgentContainers force-removes every lab agent container and
-// its .claude volume (the e2e database is dropped next run, so any
-// leftover container would be an orphan anyway).
+// removeAgentContainers force-removes THIS run's agent containers and
+// their .claude volumes, scoped by the agent ids in the e2e database
+// (still present — it is dropped by the NEXT run's setup). Filtering
+// on the label key alone would match every lab agent on the machine
+// and destroy real agents' containers and session-state volumes.
 func (h *harness) removeAgentContainers() {
 	ctx := context.Background()
-	f := filters.NewArgs(filters.Arg("label", "lab.agent-id"))
-	list, err := h.docker.ContainerList(ctx, container.ListOptions{All: true, Filters: f})
+	db, err := sql.Open("pgx", h.dsn)
 	if err != nil {
-		h.t.Logf("cleanup: listing containers: %v", err)
+		h.t.Logf("cleanup: opening e2e db: %v", err)
 		return
 	}
-	for _, c := range list {
-		h.docker.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true})
-		if agentID := c.Labels["lab.agent-id"]; agentID != "" {
-			h.docker.VolumeRemove(ctx, "lab-claude-"+agentID, true)
+	defer db.Close()
+	rows, err := db.QueryContext(ctx, "SELECT id FROM lab.agents")
+	if err != nil {
+		h.t.Logf("cleanup: listing e2e agents: %v", err)
+		return
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			h.t.Logf("cleanup: scanning agent id: %v", err)
+			return
 		}
+		ids = append(ids, id)
+	}
+	for _, id := range ids {
+		f := filters.NewArgs(filters.Arg("label", "lab.agent-id="+id))
+		list, err := h.docker.ContainerList(ctx, container.ListOptions{All: true, Filters: f})
+		if err != nil {
+			h.t.Logf("cleanup: listing containers for agent %s: %v", id, err)
+			continue
+		}
+		for _, c := range list {
+			h.docker.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true})
+		}
+		h.docker.VolumeRemove(ctx, "lab-claude-"+id, true)
 	}
 }
 

@@ -215,3 +215,84 @@ already described the TUI/labd start path, never `agent run`).
   unchanged by this phase except where §1 touched `cmd/labd/main.go`
   and `internal/labd/claude/` — the sweep is additive (new file) and
   the main.go recovery block replacement is localized.
+
+---
+
+## Orchestrator review — BOUNCED (2026-08-13)
+
+Most of the phase verified clean: full diff read; `make check` green;
+new suites `-race` twice; secret scan clean; `make e2e` green twice
+(13.4s / 12.6s); the boot sweep repaired real leftover state on its
+first dev-machine run (four stale container ids); port-bind retry,
+migrate output, spawn 409s, TUI signal handling, and `agent run`
+removal all verified. One finding class blocks the close:
+
+### Fix 1 (blocking): the boot sweep destroys other instances' agents
+
+`make e2e` on a dev machine **deletes every real agent's container
+and `.claude` session volume**. Two contributing defects, one root
+assumption:
+
+- The e2e harness teardown (`removeAgentContainers`) filtered on the
+  *presence* of the `lab.agent-id` label with `All: true` — matching
+  every lab container on the machine, not just the suite's. **Already
+  fixed on this branch by the orchestrator** (cleanup now scoped to
+  the agent ids in the `lab_e2e` database); a canary container +
+  volume survives the suite. Keep this fix.
+- The remaining and deeper defect: the e2e labd's **boot sweep** does
+  the same thing by design — it lists all `lab.agent-id` containers,
+  looks them up in *its* (empty `lab_e2e`) database, concludes
+  "deleted agent", and removes container + volume. Observed live: a
+  dev agent's conversation history destroyed; its driver then
+  crash-looped on `--resume` ("No conversation found", replace, 3s
+  backoff, forever).
+
+The sweep's "unknown container ⇒ deleted agent ⇒ remove" rule is only
+sound when one labd owns every lab container on the Docker daemon —
+an assumption the handoff itself baked in (orchestrator's error, the
+implementation followed spec) and that the e2e suite violates by
+running a second labd against a second database on the same daemon.
+
+**Required fix — deployment identity on containers:**
+
+- `runtime.Spec`/`Create` stamps a new label (e.g.
+  `lab.deployment=<id>`) on every agent container. Derive the id from
+  the daemon's database identity — e.g. hash of
+  `pg_control_system().system_identifier` + the database OID — so two
+  labds on different databases can never claim each other's
+  containers. No migration needed if derived; if you persist one
+  instead, record why.
+- The sweep treats containers **without a matching deployment label
+  as foreign: skip and log (INFO), never remove.** Unlabeled
+  (pre-fix) containers are foreign too — they get replaced naturally
+  by their own daemon's driver; removal of true orphans can stay
+  manual for now.
+- The e2e suite asserts the property: plant a foreign-labeled (and an
+  unlabeled) canary container + volume before the suite; they must
+  survive the whole run including the kill-9 restart sweep.
+- `runtime.List` should surface the label so both the sweep and the
+  e2e teardown can filter on it (the teardown's DB-scoped fix can
+  stay as defense in depth).
+
+### Fix 2 (bounded, same branch): resume crash-loop
+
+A deterministically unresumable session (claude exits immediately;
+stderr "No conversation found with session ID") currently
+replace-loops forever at 3s intervals and wedges the agent. Add a
+bounded fallback: after N (suggest 3) consecutive immediate exits of
+a `--resume` process, clear the session's `claude_session_id`, log
+loudly (WARN), and start fresh — continuity is already lost at that
+point; the agent should recover instead of wedging. Recovery via
+`retire` remains for humans. Cover with a driver test (fake runner:
+resume-exits-instantly ×3 → fresh start without resume).
+
+### Not blocking, recorded
+
+- Dev-machine recovery from the incident: demo11's agents were
+  retired to fresh sessions (history unrecoverable); any other agent
+  with a stale `claude_session_id` (`rev10`, `impl1`) will crash-loop
+  on next start until retired — or until Fix 2 lands, which handles
+  it automatically.
+- The acceptance "manual kill -9 demo with a real agent" was
+  pre-empted by this incident; the orchestrator will run it during
+  the re-review.
