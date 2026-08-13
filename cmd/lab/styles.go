@@ -36,9 +36,11 @@ var (
 	// Selected row: subtle background wash, per direction 1c.
 	sSelRow = lipgloss.NewStyle().Background(cSelBG).Foreground(cAccentHi)
 
-	// Active tab pill.
-	sTabOn  = lipgloss.NewStyle().Background(cSelBG).Foreground(cAccentHi).Padding(0, 1)
-	sTabOff = lipgloss.NewStyle().Foreground(cDim).Padding(0, 1)
+	// Active tab pill: accent while the main pane is focused, a
+	// neutral pill when focus is elsewhere.
+	sTabOn   = lipgloss.NewStyle().Background(cSelBG).Foreground(cAccentHi).Padding(0, 1)
+	sTabIdle = lipgloss.NewStyle().Background(cBadgeBG).Foreground(cMuted).Padding(0, 1)
+	sTabOff  = lipgloss.NewStyle().Foreground(cDim).Padding(0, 1)
 
 	// Focused element: box + accent left edge (direction 1c).
 	sFocusBox = lipgloss.NewStyle().

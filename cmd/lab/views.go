@@ -108,13 +108,36 @@ func (m model) footerView() string {
 	default:
 		hints = []string{key("tab", "panes"), key("p", "new project")}
 	}
-	line := strings.Join(hints, sFaint.Render(" · "))
+	line := sAccent.Render(m.focusName()) + sFaint.Render(" · ") + strings.Join(hints, sFaint.Render(" · "))
 	right := key("q", "quit")
 	if m.lastErr != "" {
 		right = sBad.Render(truncate(m.lastErr, m.width/2)) + "  " + right
 	}
 	gap := max(1, m.width-lipgloss.Width(line)-lipgloss.Width(right))
 	return line + strings.Repeat(" ", gap) + right
+}
+
+// focusName names the focused pane for the footer, making the key
+// hints glanceable as a focus indicator.
+func (m model) focusName() string {
+	switch {
+	case m.form != nil:
+		return "dialog"
+	case !m.connOK:
+		return "disconnected"
+	case m.focus == focusComposer:
+		return "composer"
+	case m.focus == focusTree:
+		return "projects"
+	case m.curAgent == nil:
+		return "projects"
+	case m.tab == tabSessions:
+		return "sessions"
+	case m.tab == tabUsage:
+		return "usage"
+	default:
+		return "transcript"
+	}
 }
 
 func (m model) connLostView() string {
@@ -135,7 +158,12 @@ func (m model) connLostView() string {
 
 func (m model) treeView() string {
 	var lines []string
-	lines = append(lines, sLabel.Render("PROJECTS"))
+	// The pane label carries focus: accent while the tree has it.
+	if m.focus == focusTree && m.form == nil {
+		lines = append(lines, sAccent.Render("PROJECTS"))
+	} else {
+		lines = append(lines, sLabel.Render("PROJECTS"))
+	}
 	for i, row := range m.tree {
 		var text string
 		switch row.Kind {
@@ -156,9 +184,14 @@ func (m model) treeView() string {
 			text = "  " + glyph + " " + a.Name + " " + sDim.Render(a.State)
 		}
 		style := lipgloss.NewStyle().Width(treeWidth - 2).MaxWidth(treeWidth - 2)
-		if i == m.treeSel && m.focus == focusTree {
-			text = sSelRow.Render("▎") + text
-		} else {
+		// Selection stays visible when the tree is unfocused, but its
+		// bar drops from accent to dim.
+		switch {
+		case i == m.treeSel && m.focus == focusTree:
+			text = sAccent.Render("▎") + text
+		case i == m.treeSel:
+			text = sDim.Render("▎") + text
+		default:
 			text = " " + text
 		}
 		lines = append(lines, style.Render(text))
@@ -200,10 +233,16 @@ func (m model) mainView() string {
 
 func (m model) tabRow(w int) string {
 	names := []string{"transcript", "sessions", "usage"}
+	// The active pill goes accent only while the main pane (or its
+	// composer) holds focus.
+	active := sTabIdle
+	if (m.focus == focusMain || m.focus == focusComposer) && m.form == nil {
+		active = sTabOn
+	}
 	var tabs []string
 	for i, n := range names {
 		if mainTab(i) == m.tab {
-			tabs = append(tabs, sTabOn.Render(n))
+			tabs = append(tabs, active.Render(n))
 		} else {
 			tabs = append(tabs, sTabOff.Render(n))
 		}
@@ -329,18 +368,21 @@ func (m model) composerView(w int) string {
 // ── sessions table ───────────────────────────────────────────────────
 
 func (m model) sessionsTable(w int) string {
-	rows := []string{sLabel.Render(fmt.Sprintf("%-10s %-20s %-18s %-8s %s", "SESSION", "SPAN", "END REASON", "EVENTS", "PREV")), hairline(w - 2)}
+	rows := []string{" " + sLabel.Render(fmt.Sprintf("%-10s %-20s %-18s %-8s %s", "SESSION", "SPAN", "END REASON", "EVENTS", "PREV")), hairline(w - 2)}
 	now := time.Now()
 	for i, s := range m.sessions {
 		line := fmt.Sprintf("%-10s %-20s %-18s %-8d %s",
 			shortID(s.ID), sessionSpan(s, now), truncate(sessionEndReason(s), 18), s.EventCount, shortIDPtr(s.PrevSessionID))
+		// Selection stays visible when the pane is unfocused, dimmed.
 		switch {
 		case i == m.sessSel && m.focus == focusMain:
-			rows = append(rows, sSelRow.Render(truncate(line, w-2)))
+			rows = append(rows, sAccent.Render("▎")+sSelRow.Render(truncate(line, w-3)))
+		case i == m.sessSel:
+			rows = append(rows, sDim.Render("▎")+sMuted.Render(truncate(line, w-3)))
 		case s.EndedAt == nil:
-			rows = append(rows, sText.Render(truncate(line, w-2)))
+			rows = append(rows, " "+sText.Render(truncate(line, w-3)))
 		default:
-			rows = append(rows, sMuted.Render(truncate(line, w-2)))
+			rows = append(rows, " "+sMuted.Render(truncate(line, w-3)))
 		}
 	}
 	if len(m.sessions) == 0 {
