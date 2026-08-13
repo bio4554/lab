@@ -23,3 +23,16 @@ agent_api_addr = "127.0.0.1:7711"
 
 [kbased]
 listen_addr = "127.0.0.1:7720"
+# Where labd reaches kbased from the host. Keep the port in sync with
+# listen_addr.
+url = "http://127.0.0.1:7720"
+# The kbased URL as seen from inside agent containers; labd injects it
+# as KBASE_URL. Keep the port in sync with listen_addr.
+kbase_url_for_agents = "http://host.docker.internal:7720"
+# Guards kbased's admin API (principal registration + token minting;
+# labd authenticates with it). Empty disables the admin API, and labd
+# then starts agents without kbase access. Set to any long random
+# string, e.g. `openssl rand -hex 32`. Not a default — this file ships
+# in the repo; put the real value in lab.toml or the
+# LAB_KBASED_ADMIN_TOKEN env var.
+admin_token = ""
