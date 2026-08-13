@@ -150,13 +150,13 @@ and credentials untouched.
 
 ## Manual acceptance script
 
-Prereqs: `make db-up && make migrate-lab`, Docker up, credential env
-file outside the repo, scratch origin repo (e.g. `/tmp/demo-repo-p7`
-with one commit), `go build -o bin/labd ./cmd/labd && go build -o
-bin/lab ./cmd/lab`.
+Prereqs: Docker up, credentials in `~/.lab/demo.env` (outside the
+repo), scratch origin repo (e.g. `/tmp/demo-repo-p7` with one
+commit). `make startd`/`make startc` handle Postgres, migrations, and
+builds.
 
-1. Terminal A: `set -a; source ~/.lab/demo.env; set +a; ./bin/labd`.
-2. Terminal B: `./bin/lab` (or `./bin/lab -addr 127.0.0.1:7710`).
+1. Terminal A: `make startd` (sources `~/.lab/demo.env`, runs labd).
+2. Terminal B: `make startc` (or `./bin/lab -addr 127.0.0.1:7710`).
    Header shows `● labd <version> · connected · drivers 0`.
 3. Press `p` → create project `demo7`, origin `/tmp/demo-repo-p7`,
    stack `base` (←/→ on the picker), enter. The project appears in
@@ -190,6 +190,38 @@ bin/lab ./cmd/lab`.
    totals with turn count) and the Σ row matches. `R` refreshes.
 10. Press `x` to stop the agent (glyph ○), `q` quits cleanly
     (terminal restored).
+
+## Live-run findings & post-review fixes (2026-08-12)
+
+The script above was exercised against a live daemon with a real
+credential; the core loop passed (turn done, 15 events, result
+`is_error=false`, usage rollups correct via the new endpoint). Issues
+found in that run, fixed on this branch:
+
+- **Turn prompts were invisible** — the CLI does not echo prompts as
+  stream events, so transcripts showed only tool calls and replies.
+  Fixed by resolving turn ids seen in events via `GET /v1/turns/{id}`
+  (cached, fetched once) and injecting each prompt as the `you ▌`
+  line at the turn's first event; agent-sent turns are labeled with
+  the source agent's name. Covered by
+  `TestBuildTranscriptInjectsTurnPrompts`.
+- **Composer border clipped** — lipgloss `Width()` excludes borders,
+  so the box overflowed the pane and lost its right edge. Width math
+  fixed for the composer box and transcript viewport.
+- **Focus was hard to see** — focus indicators added in the 1c
+  idiom: the `PROJECTS` label and active tab pill render accent only
+  while their pane holds focus; tree/sessions selections stay visible
+  when unfocused (bar drops accent → dim); the footer key hints are
+  prefixed with the focused pane's name.
+- **One-command startup** — `make startd` (Postgres up + migrate +
+  build + run labd, sourcing `~/.lab/demo.env` when present) and
+  `make startc` (build + run the TUI); README gained a Quick start.
+  A fresh clone needs only those two commands.
+
+Also observed in the live run, not a bug: submitting a turn to an
+agent that was never started leaves the indicator on `queued`
+(labd queues durably; the turn drains on start). A "not started"
+hint in the composer area is a possible later nicety.
 
 ## Notes / open questions for later phases
 
