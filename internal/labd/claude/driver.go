@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,6 +43,10 @@ var (
 	// different (newer) session — the current session was retired out
 	// from under it. Run re-provisions against the new session.
 	errSessionRetired = errors.New("claude: session retired")
+	// errRestartRequested: a restart was poked (credential rebind) and
+	// the pump reached a turn boundary. Run replaces the container
+	// (--resume continuity, env rebuilt) against the same session.
+	errRestartRequested = errors.New("claude: process restart requested")
 )
 
 // Options configures a Driver. Store is required; Git, Runtime and
@@ -108,6 +113,37 @@ type Driver struct {
 	pollInterval   time.Duration
 	shutdownGrace  time.Duration
 	restartBackoff time.Duration
+
+	restartMu sync.Mutex
+	restarts  map[uuid.UUID]bool
+}
+
+// PokeRestart asks the agent's pump — when one is hosted in this
+// process — to replace its claude process at the next turn boundary:
+// the container is rebuilt (fresh env) and the claude process resumes
+// the same session via --resume. Used by the credential rebind
+// endpoint so a running agent picks up its new credential without
+// waiting for a natural restart. A poke for an agent with no hosted
+// pump is consumed by its next pump, which provisions fresh env
+// anyway.
+func (d *Driver) PokeRestart(agentID uuid.UUID) {
+	d.restartMu.Lock()
+	defer d.restartMu.Unlock()
+	if d.restarts == nil {
+		d.restarts = make(map[uuid.UUID]bool)
+	}
+	d.restarts[agentID] = true
+}
+
+// takeRestartPoke consumes a pending restart poke for the agent.
+func (d *Driver) takeRestartPoke(agentID uuid.UUID) bool {
+	d.restartMu.Lock()
+	defer d.restartMu.Unlock()
+	if !d.restarts[agentID] {
+		return false
+	}
+	delete(d.restarts, agentID)
+	return true
 }
 
 // New returns a Driver.
@@ -200,6 +236,13 @@ func (d *Driver) Run(ctx context.Context, agentID uuid.UUID) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		// Re-read the agent each provision cycle: credential rebinds
+		// and threshold changes apply on the next process, not only
+		// after a driver restart.
+		agent, err = d.st.GetAgent(ctx, agent.ID)
+		if err != nil {
+			return err
+		}
 		sess, err := d.ensureSession(ctx, agent.ID)
 		if err != nil {
 			return err
@@ -221,6 +264,8 @@ func (d *Driver) Run(ctx context.Context, agentID uuid.UUID) error {
 			return ctx.Err()
 		case errors.Is(err, errSessionRetired):
 			d.log.Info("session retired; starting fresh process", "agent", agent.Name)
+		case errors.Is(err, errRestartRequested):
+			d.log.Info("restart requested; replacing claude process with fresh env", "agent", agent.Name)
 		case errors.Is(err, errProcessExited):
 			d.log.Warn("claude process exited; replacing", "agent", agent.Name, "backoff", d.restartBackoff)
 			select {

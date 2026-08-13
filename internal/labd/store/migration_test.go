@@ -82,8 +82,9 @@ func TestLabMigrationRoundTrip(t *testing.T) {
 		}
 	}
 
-	// Down once rolls back 00004 (credential budget columns), then
-	// 00003 (agent_tokens), then 00002 (the phase-1 tables).
+	// Down once rolls back 00005 (agent spawn/retire columns), then
+	// 00004 (credential budget columns), then 00003 (agent_tokens),
+	// then 00002 (the phase-1 tables).
 	columnExists := func(table, column string) bool {
 		var exists bool
 		err := db.QueryRowContext(ctx,
@@ -96,6 +97,15 @@ func TestLabMigrationRoundTrip(t *testing.T) {
 	}
 	if !columnExists("credentials", "limited_until") {
 		t.Fatalf("after Up: credentials.limited_until missing")
+	}
+	if !columnExists("agents", "can_spawn") || !columnExists("agents", "retire_context_tokens") {
+		t.Fatalf("after Up: agent spawn/retire columns missing")
+	}
+	if err := stream.Down(ctx, db); err != nil {
+		t.Fatalf("Down: %v", err)
+	}
+	if columnExists("agents", "can_spawn") || columnExists("agents", "retire_context_tokens") {
+		t.Fatalf("after Down of 00005: agent spawn/retire columns still present")
 	}
 	if err := stream.Down(ctx, db); err != nil {
 		t.Fatalf("Down: %v", err)

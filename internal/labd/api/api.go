@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -65,21 +66,32 @@ func toWireProject(p store.Project) wire.Project {
 
 func toWireAgent(a store.Agent, sess *store.Session, running bool) wire.Agent {
 	wa := wire.Agent{
-		ID:           a.ID,
-		ProjectID:    a.ProjectID,
-		Name:         a.Name,
-		Model:        a.Model,
-		State:        a.State,
-		StatusText:   a.StatusText,
-		Branch:       a.Branch,
-		CredentialID: a.CredentialID,
-		Running:      running,
-		CreatedAt:    a.CreatedAt,
+		ID:                  a.ID,
+		ProjectID:           a.ProjectID,
+		Name:                a.Name,
+		Model:               a.Model,
+		State:               a.State,
+		StatusText:          a.StatusText,
+		Branch:              a.Branch,
+		CredentialID:        a.CredentialID,
+		Running:             running,
+		CanSpawn:            a.CanSpawn,
+		RetireContextTokens: a.RetireContextTokens,
+		CreatedAt:           a.CreatedAt,
 	}
 	if sess != nil {
 		wa.SessionID = &sess.ID
 	}
 	return wa
+}
+
+// agentContextTokens computes the agent's current context occupancy
+// (0 when it has no open session).
+func agentContextTokens(ctx context.Context, st *store.Store, sess *store.Session) (int64, error) {
+	if sess == nil {
+		return 0, nil
+	}
+	return st.SessionContextTokens(ctx, sess.ID)
 }
 
 func toWireTurn(t store.Turn) wire.Turn {

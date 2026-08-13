@@ -6,7 +6,7 @@
 //	labctl project create -name X -origin <url|path> -stack go
 //	labctl cred add -kind api_key|oauth_token -label personal [-expires RFC3339|never]   (secret on stdin)
 //	labctl cred list
-//	labctl agent create -project X -name impl1 [-role "..."] [-model m] [-cred api_key|oauth_token] [-cred-id id]
+//	labctl agent create -project X -name impl1 [-role "..."] [-role-file f] [-model m] [-cred api_key|oauth_token] [-cred-id id] [-can-spawn] [-retire-tokens N]
 //	labctl agent run -project X -name impl1
 //	labctl send -project X -agent impl1 "prompt text"
 //	labctl tail -project X -agent impl1
@@ -235,9 +235,12 @@ func (a app) agentCreate(ctx context.Context, args []string) error {
 	project := fs.String("project", "", "project name")
 	name := fs.String("name", "", "agent name")
 	role := fs.String("role", "", "role prompt (--append-system-prompt)")
+	roleFile := fs.String("role-file", "", "read the role prompt from a file (e.g. roles/orchestrator.md)")
 	model := fs.String("model", "", "model override")
 	cred := fs.String("cred", "", "credential kind: api_key|oauth_token (binds the only stored credential of that kind)")
 	credID := fs.String("cred-id", "", "credential id (see cred list)")
+	canSpawn := fs.Bool("can-spawn", false, "allow the agent to spawn workers via the agent API (orchestrators)")
+	retireTokens := fs.Int64("retire-tokens", 0, "auto-retire the session once context occupancy reaches this many tokens (0 = never)")
 	fs.Parse(args)
 	if *project == "" || *name == "" {
 		return fmt.Errorf("agent create: -project and -name are required")
@@ -246,9 +249,24 @@ func (a app) agentCreate(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	rolePrompt := *role
+	if *roleFile != "" {
+		if rolePrompt != "" {
+			return fmt.Errorf("agent create: pass -role or -role-file, not both")
+		}
+		b, err := os.ReadFile(*roleFile)
+		if err != nil {
+			return fmt.Errorf("agent create: -role-file: %w", err)
+		}
+		rolePrompt = string(b)
+	}
 	na := store.NewAgent{
-		ProjectID: proj.ID, Name: *name, RolePrompt: *role,
-		Branch: gitrepo.BranchName(*name),
+		ProjectID: proj.ID, Name: *name, RolePrompt: rolePrompt,
+		Branch:   gitrepo.BranchName(*name),
+		CanSpawn: *canSpawn,
+	}
+	if *retireTokens > 0 {
+		na.RetireContextTokens = retireTokens
 	}
 	if *model != "" {
 		na.Model = model

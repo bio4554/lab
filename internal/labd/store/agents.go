@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const agentCols = "id, project_id, name, role_prompt, model, credential_id, budget, state, container_id, branch, status_text, created_at"
+const agentCols = "id, project_id, name, role_prompt, model, credential_id, budget, state, container_id, branch, status_text, can_spawn, retire_context_tokens, created_at"
 
 func (s *Store) CreateAgent(ctx context.Context, a NewAgent) (Agent, error) {
 	budget := a.Budget
@@ -18,10 +18,10 @@ func (s *Store) CreateAgent(ctx context.Context, a NewAgent) (Agent, error) {
 		budget = []byte("{}")
 	}
 	rows, _ := s.pool.Query(ctx, `
-		INSERT INTO lab.agents (project_id, name, role_prompt, model, credential_id, budget, branch)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO lab.agents (project_id, name, role_prompt, model, credential_id, budget, branch, can_spawn, retire_context_tokens)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING `+agentCols,
-		a.ProjectID, a.Name, a.RolePrompt, a.Model, a.CredentialID, budget, a.Branch)
+		a.ProjectID, a.Name, a.RolePrompt, a.Model, a.CredentialID, budget, a.Branch, a.CanSpawn, a.RetireContextTokens)
 	agent, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Agent])
 	if err != nil {
 		return Agent{}, fmt.Errorf("create agent: %w", err)

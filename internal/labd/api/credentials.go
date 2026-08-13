@@ -223,7 +223,8 @@ func (s *ClientServer) agentBudgetSet(w http.ResponseWriter, r *http.Request) {
 
 // agentCredentialSet rebinds an agent to a credential (or unbinds with
 // null). The new binding applies from the agent's next container
-// provision; a hosted driver picks it up on its next restart.
+// provision; a hosted driver is poked to replace its process at the
+// next turn boundary.
 func (s *ClientServer) agentCredentialSet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	_, agent, err := s.findAgent(ctx, r)
@@ -245,6 +246,14 @@ func (s *ClientServer) agentCredentialSet(w http.ResponseWriter, r *http.Request
 	if err := s.Store.SetAgentCredential(ctx, agent.ID, req.CredentialID); err != nil {
 		writeError(s.Log, w, http.StatusInternalServerError, err)
 		return
+	}
+	// A running driver keeps its old env until the process restarts;
+	// poke it so the claude process is replaced at the next turn
+	// boundary (container rebuilt, --resume continuity — the session
+	// survives, only the env changes).
+	if s.Driver != nil && s.Manager != nil && s.Manager.IsRunning(agent.ID) {
+		s.Driver.PokeRestart(agent.ID)
+		s.Log.Info("credential rebound; process restart poked", "agent", agent.Name)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
