@@ -62,7 +62,7 @@ Ground rules for impl agents (repeated in every handoff):
 | 6     | labd APIs & agent tokens               | **done** (4788624, merged; demo re-run by orchestrator) | phase-06-api | 5          |
 | 7     | TUI v1                                 | **done** (8685b1e+fixes, merged) | phase-07-tui | 6          |
 | 8     | Credentials & budgets                  | **done** (7f1c7eb, merged; demo re-run by orchestrator) | phase-08-credentials-budgets | 6          |
-| 9     | kbase core: daemon, CLI, recall        | handed off | phase-09-kbase | 0 (schema), 6 (tokens pattern) |
+| 9     | kbase core: daemon, CLI, recall        | **done** (5d323f1, merged; in-container demo run by orchestrator) | phase-09-kbase | 0 (schema), 6 (tokens pattern) |
 | 10    | kbase graph & tickets                  | pending | —      | 9          |
 | 11    | lab-agent & orchestration loop         | pending | —      | 6, 9       |
 | 12    | Integration hardening                  | pending | —      | all        |

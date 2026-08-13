@@ -137,3 +137,44 @@ the CLI round-trip test drives.
 - Out of scope per handoff: graph/edges, tickets/CAS behavior (the
   `component`/`ticket` types are accepted and stored already),
   pgvector, TUI views, `lab-agent`.
+
+---
+
+## Orchestrator review (2026-08-12) — closed
+
+Full diff read (21 files, +3002); branch `make check` green; new
+packages pass `-race -count=1` twice on the branch and again post-merge;
+diff secret-scan clean (`lab.example.toml` ships `admin_token = ""`).
+
+**Merge**: the promised `driver.go` conflict landed (Options/Driver/New
+— both phases add adjacent fields) plus one in `cmd/labd/main.go`
+(TurnGate vs KBase in the driver options); resolved by keeping both
+sides. Merged as 1d70d56.
+
+**Post-merge fix (e531fd6)**: one rare flake surfaced in
+`TestAgentBudgetAndUsageStatus` — `GET /v1/usage` runs a live gate
+check per listed agent, and an agent deleted between the listing and
+the check 500'd the whole report (visible to any TUI usage poll too,
+not just tests). Fixed by skipping rows that vanish mid-scan; full
+suite then green repeatedly.
+
+**Live demo (the in-container half)**: kbased + labd started with a
+shared `LAB_KBASED_ADMIN_TOKEN` and no Anthropic credential in either
+env → agent bound to the Phase 8 vault credential → **combined env
+verified in the container: exactly one credential var, KBASE_URL
+(host.docker.internal:7720), KBASE_TOKEN, LAB_* intact, real kbase
+binary in the image** (one-time image rebuild from the new CLI hash, as
+predicted) → `kbase add/recall/show --history` from inside the
+container with `agent:rev9` provenance → human principal + token minted
+via the admin API, v2 appended from the host, history shows both
+authors → direct SQL UPDATE on a version rejected by the append-only
+trigger → all stored tokens are 32-byte hashes; agent-token plaintext
+appears in no daemon log and not at rest → **a real turn had the agent
+itself run `kbase recall postgres` via Bash and answer `use-postgres`**
+→ SIGTERM: both daemons drained cleanly.
+
+Accepted decisions: admin-token auth over a second listener (correct on
+Docker Desktop), content as text/markdown (handoff overrides old
+DESIGN.md jsonb), scope semantics incl. shadowed-slug rules, degrade-
+without-kbase provisioning. DESIGN.md's token model, kbase data model,
+and recall sections updated to as-built.

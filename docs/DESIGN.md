@@ -99,9 +99,21 @@ Module: single Go module. Migrations via `goose`. Postgres via `pgx`. TUI via
   bearer tokens minted by `labd`** at container creation and injected as env
   vars. Every kbase write is therefore attributable to an agent identity (or
   a human via the TUI) without self-reporting.
-- Token model (kbase schema): `tokens(id, secret_hash, principal_kind
-  agent|human, principal_id, project_id, created_at, revoked_at)`.
-  `labd` registers agents as principals with `kbased` when it mints tokens.
+- Token model (kbase schema, as built in Phase 9):
+  `principals(id, kind agent|human, external_id, display_name)` +
+  `tokens(id, principal_id, secret_hash sha256, project_id nullable,
+  created_at, revoked_at)` — one live token per (principal, scope),
+  rotated at container create. `labd` registers agents as principals
+  via kbased's **admin API**, which is guarded by a config-designated
+  admin token (`[kbased] admin_token` / `LAB_KBASED_ADMIN_TOKEN`, no
+  default, constant-time compared, never stored in the database) rather
+  than a localhost-only listener — on Docker Desktop
+  `host.docker.internal` reaches host-localhost services, so a second
+  listener would not actually exclude agent containers. Empty token ⇒
+  admin API answers 403 and agents run without kbase access (kbase is a
+  dependency, not a hard requirement: provisioning failures at
+  container create log a warning and start the agent without
+  `KBASE_URL`/`KBASE_TOKEN`).
 
 ## Projects & git
 
@@ -260,13 +272,20 @@ Serves N projects; entries are project-scoped with an optional global scope
 
 ### Data model
 
-Everything is **versioned, append-only, with provenance**. Two-table core:
+Everything is **versioned, append-only, with provenance**. Two-table core
+(as built in Phase 9):
 
 - `entries(id, project_id nullable, type decision|note|architecture|
-  component|ticket|..., slug, created_by_token, created_at)`
-- `entry_versions(id, entry_id, version_no, title, content jsonb,
-  author_token, created_at)` — "current" = max `version_no`; nothing is
-  updated in place (single exception: ticket claim, below).
+  component|ticket, slug, created_by → principals, created_at)` — slugs
+  unique per project scope, with NULL (global) its own scope via two
+  partial unique indexes.
+- `entry_versions(id, entry_id, version_no, title, content text
+  (markdown), author → principals, created_at)` — "current" = max
+  `version_no`; nothing is updated in place (single exception: ticket
+  claim, below). Append-only is a **schema property**: a trigger
+  rejects UPDATE/DELETE on version rows, even via direct SQL. The
+  author is always the principal behind the request token — no request
+  field can set it.
 
 ### Architecture graphs (first-class)
 
@@ -299,7 +318,13 @@ other:
 The API is designed around the agent's recall loop, not fancy querying:
 `kbase recall "<task description>" [--type ...] [-n 8]` → the N most
 relevant current versions. Postgres full-text search first; pgvector only
-if FTS proves insufficient.
+if FTS proves insufficient. As built: weighted generated tsvectors —
+title (A) + content (B) on `entry_versions`, slug words (A) on
+`entries`, both GIN-indexed, concatenated at query time —
+`websearch_to_tsquery` + `ts_rank`, current versions only, `ts_headline`
+excerpts. Scope rules: project tokens read their project + global and
+write only their project; scope-less tokens read/write everything and
+disambiguate shadowed slugs with an explicit project.
 
 ### CLI surface (v1)
 
