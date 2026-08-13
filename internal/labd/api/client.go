@@ -52,6 +52,8 @@ func (s *ClientServer) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/projects/{project}/agents/{agent}/stop", s.agentStop)
 	mux.HandleFunc("POST /v1/projects/{project}/agents/{agent}/retire", s.agentRetire)
 	mux.HandleFunc("POST /v1/projects/{project}/agents/{agent}/turns", s.turnSubmit)
+	mux.HandleFunc("GET /v1/projects/{project}/agents/{agent}/sessions", s.sessionList)
+	mux.HandleFunc("GET /v1/projects/{project}/usage", s.projectUsage)
 
 	mux.HandleFunc("GET /v1/turns/{id}", s.turnGet)
 	mux.HandleFunc("GET /v1/sessions/{session}/events", s.sessionEvents)
@@ -388,6 +390,48 @@ func (s *ClientServer) turnGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(s.Log, w, http.StatusOK, toWireTurn(turn))
+}
+
+// ── sessions & usage ─────────────────────────────────────────────────
+
+func (s *ClientServer) sessionList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	_, agent, err := s.findAgent(ctx, r)
+	if err != nil {
+		writeError(s.Log, w, http.StatusInternalServerError, err)
+		return
+	}
+	sessions, err := s.Store.ListSessions(ctx, agent.ID)
+	if err != nil {
+		writeError(s.Log, w, http.StatusInternalServerError, err)
+		return
+	}
+	out := make([]wire.Session, len(sessions))
+	for i, sess := range sessions {
+		out[i] = toWireSession(sess)
+	}
+	writeJSON(s.Log, w, http.StatusOK, out)
+}
+
+func (s *ClientServer) projectUsage(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	proj, err := s.findProject(ctx, r)
+	if err != nil {
+		writeError(s.Log, w, http.StatusInternalServerError, err)
+		return
+	}
+	now := time.Now()
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	rows, err := s.Store.ProjectUsage(ctx, proj.ID, now.Add(-time.Hour), dayStart)
+	if err != nil {
+		writeError(s.Log, w, http.StatusInternalServerError, err)
+		return
+	}
+	out := make([]wire.AgentUsage, len(rows))
+	for i, u := range rows {
+		out[i] = toWireAgentUsage(u)
+	}
+	writeJSON(s.Log, w, http.StatusOK, out)
 }
 
 // ── events ───────────────────────────────────────────────────────────

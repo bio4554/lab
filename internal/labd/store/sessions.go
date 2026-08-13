@@ -69,6 +69,30 @@ func (s *Store) SetClaudeSessionID(ctx context.Context, id uuid.UUID, claudeSess
 	return nil
 }
 
+// SessionStats is a session plus its event count, for history
+// listings.
+type SessionStats struct {
+	Session
+	EventCount int64 `db:"event_count"`
+}
+
+// ListSessions returns all of an agent's sessions, newest first, each
+// with its event count.
+func (s *Store) ListSessions(ctx context.Context, agentID uuid.UUID) ([]SessionStats, error) {
+	rows, _ := s.pool.Query(ctx, `
+		SELECT `+sessionCols+`,
+			(SELECT count(*) FROM lab.events e WHERE e.session_id = lab.sessions.id)::bigint AS event_count
+		FROM lab.sessions
+		WHERE agent_id = $1
+		ORDER BY started_at DESC, id DESC`,
+		agentID)
+	sessions, err := pgx.CollectRows(rows, pgx.RowToStructByName[SessionStats])
+	if err != nil {
+		return nil, fmt.Errorf("list sessions: %w", err)
+	}
+	return sessions, nil
+}
+
 // CurrentSession returns the agent's open (not ended) session, or nil
 // if the agent has none.
 func (s *Store) CurrentSession(ctx context.Context, agentID uuid.UUID) (*Session, error) {

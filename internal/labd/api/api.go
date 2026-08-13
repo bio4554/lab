@@ -96,6 +96,29 @@ func toWireTurn(t store.Turn) wire.Turn {
 	}
 }
 
+func toWireSession(s store.SessionStats) wire.Session {
+	return wire.Session{
+		ID:              s.ID,
+		AgentID:         s.AgentID,
+		ClaudeSessionID: s.ClaudeSessionID,
+		StartedAt:       s.StartedAt,
+		EndedAt:         s.EndedAt,
+		EndReason:       s.EndReason,
+		PrevSessionID:   s.PrevSessionID,
+		EventCount:      s.EventCount,
+	}
+}
+
+func toWireAgentUsage(u store.AgentUsage) wire.AgentUsage {
+	return wire.AgentUsage{
+		AgentID:   u.AgentID,
+		AgentName: u.AgentName,
+		LastHour:  wire.Usage{TokensIn: u.HourIn, TokensOut: u.HourOut, CostUSD: u.HourCost, Turns: u.HourTurns},
+		Today:     wire.Usage{TokensIn: u.DayIn, TokensOut: u.DayOut, CostUSD: u.DayCost, Turns: u.DayTurns},
+		Total:     wire.Usage{TokensIn: u.TotalIn, TokensOut: u.TotalOut, CostUSD: u.TotalCost, Turns: u.TotalTurn},
+	}
+}
+
 func toWireEvent(e store.Event) wire.Event {
 	return wire.Event{
 		ID:        e.ID,
