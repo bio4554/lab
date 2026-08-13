@@ -68,6 +68,14 @@ func (m *Manager) repoDir(projectID string) string {
 	return filepath.Join(m.projectDir(projectID), "repo.git")
 }
 
+// RepoDir returns the host path of a project's bare repo. Containers
+// bind-mount it at the same absolute path so the worktree's .git link
+// file (which records this host path) resolves inside the container
+// and agents can run git in /work.
+func (m *Manager) RepoDir(projectID string) string {
+	return m.repoDir(projectID)
+}
+
 // worktreeDir returns the worktree path for an agent.
 func (m *Manager) worktreeDir(projectID, agentID string) string {
 	return filepath.Join(m.projectDir(projectID), "worktrees", agentID)

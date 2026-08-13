@@ -20,6 +20,11 @@ available in your shell: `kbase` (knowledge base and tickets) and
    `kbase ticket abandon <slug>` so it becomes claimable again.
 4. **Report status.** Keep `lab-agent status "<one line>"` current:
    what you are doing, or "" to clear when idle.
+5. **Notify your orchestrator.** When you finish a ticket, get
+   blocked, or abandon, send a short message back to whoever assigned
+   the work: `lab-agent send <orchestrator> "ticket <slug> done —
+   commit <hash>"`. Agents cannot see each other's transcripts; a turn
+   is the only way your orchestrator learns you are finished.
 
 ## Rules
 

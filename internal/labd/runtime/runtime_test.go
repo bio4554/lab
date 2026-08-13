@@ -188,15 +188,23 @@ func TestContainerRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	repoGit := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repoGit, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	agentID := fmt.Sprintf("test-rt-%d", os.Getpid())
 	spec := Spec{
 		AgentID:      agentID,
 		ProjectID:    "test-project",
 		Image:        tag,
 		WorktreePath: worktree,
+		RepoGitPath:  repoGit,
 		Env:          map[string]string{"LAB_TEST_ENV": "roundtrip"},
-		// Prove the mount is visible from inside, then echo stdin.
-		Cmd: []string{"sh", "-c", "cat /work/hello.txt; cat"},
+		// Prove both bind mounts are visible from inside — the repo.git
+		// mount at its host path is what makes worktree git links
+		// resolve — then echo stdin.
+		Cmd: []string{"sh", "-c", "cat /work/hello.txt; head -c 4 " + repoGit + "/HEAD; echo; cat"},
 	}
 	ctx := context.Background()
 	id := createAgent(t, rt, spec)
@@ -234,8 +242,10 @@ func TestContainerRoundTrip(t *testing.T) {
 		}
 	}
 
-	// The mounted worktree file, printed by the container on startup.
+	// The mounted worktree file, printed by the container on startup,
+	// then the repo.git mount read back at its identical host path.
 	readLine("from-worktree")
+	readLine("ref:")
 
 	// stdin → stdout round-trip through the demultiplexed attach.
 	for _, msg := range []string{"ping-1", "ping-2"} {

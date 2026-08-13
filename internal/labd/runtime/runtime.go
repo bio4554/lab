@@ -82,12 +82,17 @@ func (r *Runtime) Ping(ctx context.Context) error {
 
 // Spec describes one agent container.
 type Spec struct {
-	AgentID      string            // container is named lab-agent-<AgentID>
-	ProjectID    string            // recorded as a label
-	Image        string            // image tag from Builder.EnsureImage
-	WorktreePath string            // host path bind-mounted rw at /work
-	Env          map[string]string // passed through verbatim; credential selection is the caller's job
-	Cmd          []string          // main process argv; nil → sleep infinity (tests)
+	AgentID      string // container is named lab-agent-<AgentID>
+	ProjectID    string // recorded as a label
+	Image        string // image tag from Builder.EnsureImage
+	WorktreePath string // host path bind-mounted rw at /work
+	// RepoGitPath, when non-empty, is the project's bare repo on the
+	// host, bind-mounted rw at the SAME absolute path inside the
+	// container: the worktree's .git file records this host path, so a
+	// same-path mount is what lets agents run git in /work.
+	RepoGitPath string
+	Env         map[string]string // passed through verbatim; credential selection is the caller's job
+	Cmd         []string          // main process argv; nil → sleep infinity (tests)
 }
 
 // ContainerName returns the container name for an agent ID.
@@ -137,19 +142,27 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 			LabelProjectID: spec.ProjectID,
 		},
 	}
-	hostCfg := &container.HostConfig{
-		Mounts: []mount.Mount{
-			{
-				Type:   mount.TypeBind,
-				Source: spec.WorktreePath,
-				Target: "/work",
-			},
-			{
-				Type:   mount.TypeVolume,
-				Source: VolumeName(spec.AgentID),
-				Target: "/home/agent/.claude",
-			},
+	mounts := []mount.Mount{
+		{
+			Type:   mount.TypeBind,
+			Source: spec.WorktreePath,
+			Target: "/work",
 		},
+		{
+			Type:   mount.TypeVolume,
+			Source: VolumeName(spec.AgentID),
+			Target: "/home/agent/.claude",
+		},
+	}
+	if spec.RepoGitPath != "" {
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeBind,
+			Source: spec.RepoGitPath,
+			Target: spec.RepoGitPath,
+		})
+	}
+	hostCfg := &container.HostConfig{
+		Mounts:     mounts,
 		ExtraHosts: []string{"host.docker.internal:host-gateway"},
 	}
 	resp, err := r.cli.ContainerCreate(ctx, cfg, hostCfg, nil, nil, ContainerName(spec.AgentID))

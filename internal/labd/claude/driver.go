@@ -320,6 +320,7 @@ func (d *Driver) runProcess(ctx context.Context, project store.Project, agent st
 		ProjectID:    project.ID.String(),
 		Image:        image,
 		WorktreePath: worktree,
+		RepoGitPath:  d.git.RepoDir(project.ID.String()),
 		Env:          env,
 		Cmd:          claudeArgs(agent.RolePrompt, agent.Model, sess.ClaudeSessionID),
 	})
