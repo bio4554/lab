@@ -59,6 +59,7 @@ func (t *transcriptState) add(events ...wire.Event) bool {
 }
 
 type model struct {
+	ctx    context.Context // bounds the SSE stream; cancelled on exit
 	client *labclient.Client
 	addr   string
 
@@ -110,7 +111,7 @@ type model struct {
 	lastErr string // transient action error (footer)
 }
 
-func newModel(client *labclient.Client, addr string) model {
+func newModel(ctx context.Context, client *labclient.Client, addr string) model {
 	ta := textarea.New()
 	ta.Placeholder = "message — enter to send · ctrl+j newline"
 	ta.SetHeight(1)
@@ -118,6 +119,7 @@ func newModel(client *labclient.Client, addr string) model {
 	ta.ShowLineNumbers = false
 	ta.Prompt = sAccent.Render("> ")
 	return model{
+		ctx:         ctx,
 		client:      client,
 		addr:        addr,
 		agents:      map[uuid.UUID][]wire.Agent{},
@@ -135,8 +137,9 @@ func newModel(client *labclient.Client, addr string) model {
 func (m model) Init() tea.Cmd {
 	// The stream starts live-only (-1): scrollback comes from
 	// per-session backfill, and the subscriber's Last-Event-ID resume
-	// keeps the live feed gapless across daemon restarts.
-	stream := m.client.StreamEvents(context.Background(), -1)
+	// keeps the live feed gapless across daemon restarts. It rides the
+	// program's context, so exiting the TUI ends the stream goroutine.
+	stream := m.client.StreamEvents(m.ctx, -1)
 	return tea.Batch(
 		func() tea.Msg { return streamInitMsg{stream} },
 		refreshCmd(m.client),

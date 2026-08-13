@@ -67,21 +67,23 @@ func (s Stream) provider(db *sql.DB) (*goose.Provider, error) {
 	return p, nil
 }
 
-// Up applies all pending migrations. It creates the target schema
-// first so the goose version table has somewhere to live; the initial
-// migration's CREATE SCHEMA IF NOT EXISTS is then a no-op.
-func (s Stream) Up(ctx context.Context, db *sql.DB) error {
+// Up applies all pending migrations and reports how many it applied
+// (0 when the stream was already up to date). It creates the target
+// schema first so the goose version table has somewhere to live; the
+// initial migration's CREATE SCHEMA IF NOT EXISTS is then a no-op.
+func (s Stream) Up(ctx context.Context, db *sql.DB) (int, error) {
 	if _, err := db.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+s.Schema); err != nil {
-		return fmt.Errorf("stream %s: create schema: %w", s.Name, err)
+		return 0, fmt.Errorf("stream %s: create schema: %w", s.Name, err)
 	}
 	p, err := s.provider(db)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if _, err := p.Up(ctx); err != nil {
-		return fmt.Errorf("stream %s: up: %w", s.Name, err)
+	results, err := p.Up(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("stream %s: up: %w", s.Name, err)
 	}
-	return nil
+	return len(results), nil
 }
 
 // Down rolls back the most recently applied migration.

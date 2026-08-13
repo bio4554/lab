@@ -73,7 +73,7 @@ func TestLabMigrationRoundTrip(t *testing.T) {
 		return exists
 	}
 
-	if err := stream.Up(ctx, db); err != nil {
+	if _, err := stream.Up(ctx, db); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
 	for _, tbl := range tables {
@@ -131,7 +131,7 @@ func TestLabMigrationRoundTrip(t *testing.T) {
 		}
 	}
 
-	if err := stream.Up(ctx, db); err != nil {
+	if _, err := stream.Up(ctx, db); err != nil {
 		t.Fatalf("Up (again): %v", err)
 	}
 	for _, tbl := range tables {

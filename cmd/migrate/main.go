@@ -51,10 +51,15 @@ func run() error {
 	ctx := context.Background()
 	switch command {
 	case "up":
-		if err := stream.Up(ctx, db); err != nil {
+		applied, err := stream.Up(ctx, db)
+		if err != nil {
 			return err
 		}
-		fmt.Printf("stream %s: up to date\n", stream.Name)
+		if applied > 0 {
+			fmt.Printf("stream %s: applied %d migration(s)\n", stream.Name, applied)
+		} else {
+			fmt.Printf("stream %s: up to date\n", stream.Name)
+		}
 	case "down":
 		if err := stream.Down(ctx, db); err != nil {
 			return err

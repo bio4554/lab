@@ -67,7 +67,7 @@ func newHarness(t *testing.T) *testHarness {
 			t.Fatalf("open for migrate: %v", err)
 		}
 		defer db.Close()
-		if err := migrate.Lab.Up(ctx, db); err != nil {
+		if _, err := migrate.Lab.Up(ctx, db); err != nil {
 			t.Fatalf("migrate lab up: %v", err)
 		}
 	})

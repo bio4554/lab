@@ -2,7 +2,7 @@ GO      ?= go
 VERSION ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 LDFLAGS  = -X main.version=$(VERSION)
 
-.PHONY: check fmt-check vet test build db-up db-down migrate-lab migrate-kbase clean startd startc
+.PHONY: check fmt-check vet test e2e build db-up db-down migrate-lab migrate-kbase clean startd startc
 
 check: fmt-check vet
 	$(GO) build ./...
@@ -19,6 +19,15 @@ vet:
 
 test:
 	$(GO) test ./...
+
+# e2e: the deterministic end-to-end suite — real labd + kbased +
+# Postgres + Docker containers, with a scripted claude stand-in (no
+# Anthropic credential needed). Requires Docker and the compose
+# Postgres (`make db-up`); skips gracefully when either is absent.
+# First run builds the base agent image (network for apt); later runs
+# hit the image cache.
+e2e:
+	$(GO) test -tags e2e -count=1 -timeout 30m -v ./e2e
 
 build:
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/labd ./cmd/labd

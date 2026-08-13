@@ -137,6 +137,22 @@ func (s *Store) RunningTurn(ctx context.Context, agentID uuid.UUID) (*Turn, erro
 	return &turn, nil
 }
 
+// AllRunningTurns returns every turn stuck in status running, across
+// all agents. On boot — before any driver starts — such turns can only
+// be leftovers of a daemon that died mid-turn; the reconciliation
+// sweep fails them so they don't wedge their agents' serial queues.
+func (s *Store) AllRunningTurns(ctx context.Context) ([]Turn, error) {
+	rows, _ := s.pool.Query(ctx, `
+		SELECT `+turnCols+` FROM lab.turns
+		WHERE status = 'running'
+		ORDER BY created_at, id`)
+	turns, err := pgx.CollectRows(rows, pgx.RowToStructByName[Turn])
+	if err != nil {
+		return nil, fmt.Errorf("all running turns: %w", err)
+	}
+	return turns, nil
+}
+
 // SetTurnSession stamps the session a turn was delivered in. Returns
 // ErrNotFound if the turn does not exist.
 func (s *Store) SetTurnSession(ctx context.Context, id, sessionID uuid.UUID) error {

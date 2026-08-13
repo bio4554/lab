@@ -96,6 +96,23 @@ func TestAgentAPISpawn(t *testing.T) {
 	// Missing name is a 400.
 	doJSON(t, client, "POST", srv.URL+"/v1/agents",
 		wire.SpawnAgentRequest{}, nil, http.StatusBadRequest, bearer(secret))
+
+	// Spawning the same name again is a 409 (unique (project_id, name)),
+	// not a 500.
+	doJSON(t, client, "POST", srv.URL+"/v1/agents", spawnReq, nil, http.StatusConflict, bearer(secret))
+}
+
+// TestAgentCreateDuplicateName: the client API's agent create maps the
+// (project_id, name) unique violation to a 409 with a clear message.
+func TestAgentCreateDuplicateName(t *testing.T) {
+	st, pool := testStore(t)
+	srv := httptest.NewServer((&ClientServer{Store: st, Log: testLogger()}).Handler())
+	t.Cleanup(srv.Close)
+
+	f := createFixture(t, st, pool)
+	req := wire.CreateAgentRequest{Name: f.Agent.Name}
+	doJSON(t, srv.Client(), "POST", srv.URL+"/v1/projects/"+f.Project.Name+"/agents",
+		req, nil, http.StatusConflict, nil)
 }
 
 // TestAgentAPIContextTokens: both listings surface the current

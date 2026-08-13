@@ -18,6 +18,9 @@ func (s *Store) CreateProject(ctx context.Context, p NewProject) (Project, error
 		RETURNING `+projectCols,
 		p.Name, p.OriginKind, p.Origin, p.Stack, p.DefaultCredentialID)
 	proj, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Project])
+	if isUniqueViolation(err) {
+		return Project{}, fmt.Errorf("project %q already exists: %w", p.Name, ErrDuplicateName)
+	}
 	if err != nil {
 		return Project{}, fmt.Errorf("create project: %w", err)
 	}

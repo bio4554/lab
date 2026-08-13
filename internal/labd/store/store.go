@@ -13,6 +13,11 @@ import (
 // session that already ended).
 var ErrNotFound = errors.New("store: not found")
 
+// ErrDuplicateName is returned when an insert collides with a
+// uniqueness constraint on a caller-chosen name (agent name within a
+// project, project name). The API layer maps it to 409.
+var ErrDuplicateName = errors.New("store: duplicate name")
+
 // Store wraps a pgx pool with typed queries for the lab schema.
 type Store struct {
 	pool *pgxpool.Pool

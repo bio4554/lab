@@ -23,6 +23,13 @@ import (
 const (
 	LabelAgentID   = "lab.agent-id"
 	LabelProjectID = "lab.project-id"
+	// LabelDeployment identifies which labd deployment (derived from
+	// its database identity — store.DeploymentID) owns the container.
+	// The boot sweep treats containers without a matching value as
+	// foreign and never removes them, so two labds sharing one Docker
+	// daemon (e.g. dev + the e2e suite) cannot destroy each other's
+	// agents.
+	LabelDeployment = "lab.deployment"
 )
 
 // Stacks returns the valid stack names, sorted. Phase 5+ validates
@@ -84,6 +91,7 @@ func (r *Runtime) Ping(ctx context.Context) error {
 type Spec struct {
 	AgentID      string // container is named lab-agent-<AgentID>
 	ProjectID    string // recorded as a label
+	DeploymentID string // recorded as a label; see LabelDeployment
 	Image        string // image tag from Builder.EnsureImage
 	WorktreePath string // host path bind-mounted rw at /work
 	// RepoGitPath, when non-empty, is the project's bare repo on the
@@ -141,6 +149,9 @@ func (r *Runtime) Create(ctx context.Context, spec Spec) (string, error) {
 			LabelAgentID:   spec.AgentID,
 			LabelProjectID: spec.ProjectID,
 		},
+	}
+	if spec.DeploymentID != "" {
+		cfg.Labels[LabelDeployment] = spec.DeploymentID
 	}
 	mounts := []mount.Mount{
 		{
@@ -230,11 +241,12 @@ func (r *Runtime) Inspect(ctx context.Context, containerID string) (State, error
 
 // Container is one row of List.
 type Container struct {
-	ID        string
-	Name      string
-	AgentID   string
-	ProjectID string
-	State     string // Docker state string: created|running|exited|...
+	ID         string
+	Name       string
+	AgentID    string
+	ProjectID  string
+	Deployment string // LabelDeployment value; empty on pre-label containers
+	State      string // Docker state string: created|running|exited|...
 }
 
 // List returns all lab agent containers (running or not), optionally
@@ -251,10 +263,11 @@ func (r *Runtime) List(ctx context.Context, projectID string) ([]Container, erro
 	out := make([]Container, 0, len(summaries))
 	for _, s := range summaries {
 		c := Container{
-			ID:        s.ID,
-			AgentID:   s.Labels[LabelAgentID],
-			ProjectID: s.Labels[LabelProjectID],
-			State:     string(s.State),
+			ID:         s.ID,
+			AgentID:    s.Labels[LabelAgentID],
+			ProjectID:  s.Labels[LabelProjectID],
+			Deployment: s.Labels[LabelDeployment],
+			State:      string(s.State),
 		}
 		if len(s.Names) > 0 {
 			c.Name = s.Names[0]

@@ -103,8 +103,9 @@ usage tab.
 
 ```sh
 make db-up                      # start dev Postgres (docker compose)
-make migrate-lab migrate-kbase  # apply both migration streams
+make migrate-lab migrate-kbase  # apply both migration streams ("applied N migration(s)" or "up to date")
 make check                      # gofmt check, go vet, go build, go test
+make e2e                        # end-to-end suite: real daemons + Docker + a scripted claude stand-in (no credential needed)
 make build                      # all binaries into bin/
 ```
 
@@ -115,5 +116,8 @@ environment overrides. They shut down cleanly on SIGINT/SIGTERM.
 is migration-current.
 
 Tests run against the compose Postgres and skip cleanly when it is
-down; Docker-dependent suites skip without the engine. This repo is
+down; Docker-dependent suites (including `make e2e`) skip without the
+engine. Agents are started through labd only (TUI or client API) —
+`labctl` is a thin dev CLI for credentials, projects, and merges; its
+old in-process `agent run` was removed in Phase 12. This repo is
 public: never commit tokens, key files, or a real `lab.toml`.

@@ -51,7 +51,7 @@ func testPool(t *testing.T) *pgxpool.Pool {
 			t.Fatalf("open for migrate: %v", err)
 		}
 		defer db.Close()
-		if err := migrate.Kbase.Up(ctx, db); err != nil {
+		if _, err := migrate.Kbase.Up(ctx, db); err != nil {
 			t.Fatalf("migrate kbase up: %v", err)
 		}
 	})
