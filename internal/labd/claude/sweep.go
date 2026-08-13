@@ -25,15 +25,24 @@ type ContainerRuntime interface {
 // driver starts or traffic is served: everything it repairs is a
 // leftover of a daemon that died without cleaning up.
 type Sweeper struct {
-	St  *store.Store
-	Rt  ContainerRuntime
-	Log *slog.Logger
+	St *store.Store
+	Rt ContainerRuntime
+	// Deployment is this labd's identity (store.DeploymentID).
+	// Containers whose lab.deployment label does not match — including
+	// unlabeled pre-label containers — are foreign: the sweep skips
+	// them and never removes them. "Unknown container ⇒ deleted agent"
+	// is only sound within one deployment; another labd on the same
+	// Docker daemon (e.g. the e2e suite's) owns its own containers.
+	Deployment string
+	Log        *slog.Logger
 }
 
-// Sweep applies the reconciliation decision table:
+// Sweep applies the reconciliation decision table, restricted to
+// containers carrying this deployment's label (everything else is
+// foreign — skipped and logged, never removed):
 //
-//   - container whose agent no longer exists in the DB → remove it and
-//     its .claude volume;
+//   - own container whose agent no longer exists in the DB → remove it
+//     and its .claude volume;
 //   - agent whose recorded container_id is stale (container gone or
 //     replaced) → clear or correct the recorded id;
 //   - turn stuck running (its pump died with the old daemon) → error
@@ -46,6 +55,11 @@ type Sweeper struct {
 // nothing. Individual repair failures are logged and joined into the
 // returned error; the sweep always visits every row it can.
 func (s *Sweeper) Sweep(ctx context.Context) error {
+	if s.Deployment == "" {
+		// An empty id would "match" unlabeled containers and reintroduce
+		// the cross-deployment destruction this field exists to prevent.
+		return fmt.Errorf("boot sweep: empty deployment id")
+	}
 	log := s.Log
 	if log == nil {
 		log = slog.Default()
@@ -62,6 +76,11 @@ func (s *Sweeper) Sweep(ctx context.Context) error {
 	// (the stale-id repair below tolerates either).
 	live := make(map[uuid.UUID]string, len(containers))
 	for _, c := range containers {
+		if c.Deployment != s.Deployment {
+			log.Info("sweep: skipping foreign container",
+				"container", short(c.ID), "deployment", c.Deployment)
+			continue
+		}
 		agentID, err := uuid.Parse(c.AgentID)
 		if err != nil {
 			log.Warn("sweep: container with unparseable agent label; skipping",

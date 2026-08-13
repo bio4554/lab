@@ -61,6 +61,11 @@ type Options struct {
 	// Nil defaults to EnvCredentialSource.
 	Creds  CredentialSource
 	Logger *slog.Logger
+	// DeploymentID, when non-empty, is this labd deployment's identity
+	// (store.DeploymentID), stamped as the lab.deployment label on
+	// every container the driver creates. The boot sweep only touches
+	// containers carrying this exact label value.
+	DeploymentID string
 	// AgentAPIURL, when non-empty, is the labd agent API base URL as
 	// reachable from inside containers (http://host.docker.internal:
 	// <port>). It enables the lab env contract: each container create
@@ -106,6 +111,7 @@ type Driver struct {
 	creds CredentialSource
 	log   *slog.Logger
 
+	deploymentID   string
 	agentAPIURL    string
 	gate           TurnGate
 	kbase          KBaseTokenSource
@@ -116,6 +122,11 @@ type Driver struct {
 
 	restartMu sync.Mutex
 	restarts  map[uuid.UUID]bool
+
+	// runProc executes one provision-and-pump cycle; Run loops over it.
+	// Defaults to runProcess; tests substitute a fake to exercise Run's
+	// replacement/crash-loop logic without git/Docker.
+	runProc func(ctx context.Context, project store.Project, agent store.Agent, sess store.Session, pending *store.Turn) (*store.Turn, error)
 }
 
 // PokeRestart asks the agent's pump — when one is hosted in this
@@ -155,6 +166,7 @@ func New(opts Options) *Driver {
 		build:          opts.Builder,
 		creds:          opts.Creds,
 		log:            opts.Logger,
+		deploymentID:   opts.DeploymentID,
 		agentAPIURL:    opts.AgentAPIURL,
 		gate:           opts.TurnGate,
 		kbase:          opts.KBase,
@@ -178,6 +190,7 @@ func New(opts Options) *Driver {
 	if d.restartBackoff <= 0 {
 		d.restartBackoff = 3 * time.Second
 	}
+	d.runProc = d.runProcess
 	return d
 }
 
@@ -232,6 +245,7 @@ func (d *Driver) Run(ctx context.Context, agentID uuid.UUID) error {
 	}
 
 	var pending *store.Turn // turn carried across a session retirement
+	resumeExits := 0        // consecutive immediate deaths of a --resume process
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -257,16 +271,40 @@ func (d *Driver) Run(ctx context.Context, agentID uuid.UUID) error {
 			pending = nil
 		}
 
-		pending, err = d.runProcess(ctx, project, agent, sess, pending)
+		resuming := sess.ClaudeSessionID != nil && *sess.ClaudeSessionID != ""
+		started := time.Now()
+		pending, err = d.runProc(ctx, project, agent, sess, pending)
 		switch {
 		case ctx.Err() != nil:
 			d.setStopped(agent.ID)
 			return ctx.Err()
 		case errors.Is(err, errSessionRetired):
+			resumeExits = 0
 			d.log.Info("session retired; starting fresh process", "agent", agent.Name)
 		case errors.Is(err, errRestartRequested):
+			resumeExits = 0
 			d.log.Info("restart requested; replacing claude process with fresh env", "agent", agent.Name)
 		case errors.Is(err, errProcessExited):
+			// Resume crash-loop breaker: a deterministically unresumable
+			// claude session (e.g. "No conversation found with session
+			// ID") exits immediately on every replacement and would loop
+			// forever. After resumeFailLimit consecutive immediate exits
+			// of a --resume process, drop the recorded id and start
+			// fresh — continuity is already lost; wedging helps no one.
+			if resuming && time.Since(started) < resumeFailWindow {
+				resumeExits++
+				if resumeExits >= resumeFailLimit {
+					d.log.Warn("resume crash-loop detected; clearing claude session id and starting fresh",
+						"agent", agent.Name, "session", sess.ID, "attempts", resumeExits)
+					if err := d.st.ClearClaudeSessionID(ctx, sess.ID); err != nil {
+						d.setStopped(agent.ID)
+						return err
+					}
+					resumeExits = 0
+				}
+			} else {
+				resumeExits = 0
+			}
 			d.log.Warn("claude process exited; replacing", "agent", agent.Name, "backoff", d.restartBackoff)
 			select {
 			case <-time.After(d.restartBackoff):
@@ -280,6 +318,15 @@ func (d *Driver) Run(ctx context.Context, agentID uuid.UUID) error {
 		}
 	}
 }
+
+// Resume crash-loop bounds: a --resume process that dies within
+// resumeFailWindow of starting, resumeFailLimit times in a row, has an
+// unresumable session id (the pump saw no result in between — anything
+// longer-lived resets the counter via the window).
+const (
+	resumeFailLimit  = 3
+	resumeFailWindow = 10 * time.Second
+)
 
 // runProcess provisions one container + claude process for the session
 // and pumps it to completion. It returns the pump's carried-over turn
@@ -318,6 +365,7 @@ func (d *Driver) runProcess(ctx context.Context, project store.Project, agent st
 	id, err := d.rt.Create(ctx, runtime.Spec{
 		AgentID:      agent.ID.String(),
 		ProjectID:    project.ID.String(),
+		DeploymentID: d.deploymentID,
 		Image:        image,
 		WorktreePath: worktree,
 		RepoGitPath:  d.git.RepoDir(project.ID.String()),

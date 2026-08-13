@@ -296,3 +296,64 @@ resume-exits-instantly ×3 → fresh start without resume).
 - The acceptance "manual kill -9 demo with a real agent" was
   pre-empted by this incident; the orchestrator will run it during
   the re-review.
+
+---
+
+## Bounce fixes (2026-08-13, same day)
+
+### Fix 1 — deployment identity on containers (implemented)
+
+- `store.DeploymentID(ctx)`: a 12-hex-char SHA-256 of
+  `pg_control_system().system_identifier` + the current database's
+  OID. Derived, not persisted — no migration; stable for a given
+  database; two labds on different databases can never share a value.
+- `runtime.LabelDeployment` (`lab.deployment`): stamped by `Create`
+  (via `Spec.DeploymentID`), surfaced by `List`
+  (`Container.Deployment`). labd computes the id once at startup, logs
+  it, and wires it into both the driver (every container create) and
+  the sweeper.
+- The sweep now treats any container whose `lab.deployment` label does
+  not equal its own id — **including unlabeled pre-fix containers** —
+  as foreign: skipped with one INFO line, never removed, never counted
+  as an agent's live container. `Sweep` refuses to run with an empty
+  deployment id (an empty id would "match" unlabeled containers and
+  reintroduce exactly the destruction this prevents); labd treats a
+  `DeploymentID` failure as fatal at startup rather than sweeping
+  blind.
+- Pre-fix containers of the *same* daemon migrate naturally: unlabeled
+  ⇒ skipped by the sweep ⇒ the agent's recorded container_id is
+  cleared ⇒ the driver replaces the container at next provision
+  (matching by agent uuid, as before) and stamps the label.
+- Tests: the sweep decision table gains a foreign-labeled and an
+  unlabeled container (both with agent ids unknown to the database —
+  the exact incident state); only the own-deployment orphan may be
+  removed. The e2e suite plants two canary containers + `.claude`
+  volumes **before labd first boots** — one labeled as a foreign
+  deployment's agent, one unlabeled — and asserts they are intact
+  immediately after the kill-9 restart's sweep (03) and again at the
+  end of the whole suite (06). The orchestrator's DB-scoped teardown
+  fix is kept as defense in depth.
+
+### Fix 2 — bounded resume crash-loop (implemented)
+
+- `Driver.Run` counts consecutive `errProcessExited` cycles where the
+  process (a) started with `--resume` and (b) died within
+  `resumeFailWindow` (10s) of starting. At `resumeFailLimit` (3) the
+  driver WARNs ("resume crash-loop detected"), clears the session's
+  `claude_session_id` (`store.ClearClaudeSessionID`, new), resets the
+  counter, and the next cycle provisions fresh — no `--resume`.
+  Any longer-lived process, retirement, or requested restart resets
+  the counter. Manual `retire` remains available to humans.
+- Testability: `Run` now calls the cycle through a `runProc` seam
+  (defaults to `runProcess`; behavior unchanged in production).
+  `TestResumeCrashLoopBreaker` drives `Run` against the live store
+  with a fake runner that dies instantly while `--resume` is present:
+  exactly 3 resume cycles, then the 4th arrives with the session id
+  cleared, and the clear is asserted persisted.
+- This also self-heals the dev machine's stale-session agents noted in
+  the review (`rev10`, `impl1`): on next start they hit the breaker
+  and recover in ~3 cycles instead of wedging.
+
+Re-verified after the fixes: `make check` green; claude + store suites
+green under `-race`; `make e2e` green twice consecutively with the
+canaries planted (canary assertions active in subtests 03 and 06).

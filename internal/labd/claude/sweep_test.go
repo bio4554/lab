@@ -167,12 +167,18 @@ func TestSweepDecisionTable(t *testing.T) {
 	// A container whose agent was deleted from the DB.
 	orphanAgentID := uuid.NewString()
 
+	const dep = "dep-under-test"
 	rt := &fakeRT{containers: []runtime.Container{
-		{ID: "c-intact", AgentID: intact.ID.String(), ProjectID: proj.ID.String(), State: "running"},
-		{ID: "c-new", AgentID: replaced.ID.String(), ProjectID: proj.ID.String(), State: "exited"},
-		{ID: "c-orphan", AgentID: orphanAgentID, ProjectID: proj.ID.String(), State: "exited"},
+		{ID: "c-intact", AgentID: intact.ID.String(), ProjectID: proj.ID.String(), Deployment: dep, State: "running"},
+		{ID: "c-new", AgentID: replaced.ID.String(), ProjectID: proj.ID.String(), Deployment: dep, State: "exited"},
+		{ID: "c-orphan", AgentID: orphanAgentID, ProjectID: proj.ID.String(), Deployment: dep, State: "exited"},
+		// Foreign deployments — even with agent ids unknown to this
+		// database — are never removed. Neither are unlabeled (pre-fix)
+		// containers.
+		{ID: "c-foreign", AgentID: uuid.NewString(), ProjectID: uuid.NewString(), Deployment: "someone-else", State: "running"},
+		{ID: "c-unlabeled", AgentID: uuid.NewString(), ProjectID: uuid.NewString(), State: "exited"},
 	}}
-	sw := &Sweeper{St: st, Rt: rt, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	sw := &Sweeper{St: st, Rt: rt, Deployment: dep, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	if err := sw.Sweep(ctx); err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
@@ -197,7 +203,7 @@ func TestSweepDecisionTable(t *testing.T) {
 	wantContainer(gone, nil)
 
 	if len(rt.removed) != 1 || rt.removed[0] != "c-orphan" {
-		t.Errorf("removed containers = %v, want [c-orphan]", rt.removed)
+		t.Errorf("removed containers = %v, want [c-orphan] only — foreign/unlabeled must survive", rt.removed)
 	}
 	if len(rt.removedVolumes) != 1 || rt.removedVolumes[0] != orphanAgentID {
 		t.Errorf("removed volumes = %v, want [%s]", rt.removedVolumes, orphanAgentID)
@@ -235,8 +241,9 @@ func TestSweepDecisionTable(t *testing.T) {
 	// Idempotence: a second sweep — against the corrected listing —
 	// finds nothing to repair.
 	rt.containers = []runtime.Container{
-		{ID: "c-intact", AgentID: intact.ID.String(), ProjectID: proj.ID.String(), State: "running"},
-		{ID: "c-new", AgentID: replaced.ID.String(), ProjectID: proj.ID.String(), State: "exited"},
+		{ID: "c-intact", AgentID: intact.ID.String(), ProjectID: proj.ID.String(), Deployment: dep, State: "running"},
+		{ID: "c-new", AgentID: replaced.ID.String(), ProjectID: proj.ID.String(), Deployment: dep, State: "exited"},
+		{ID: "c-foreign", AgentID: uuid.NewString(), ProjectID: uuid.NewString(), Deployment: "someone-else", State: "running"},
 	}
 	rt.removed, rt.removedVolumes = nil, nil
 	if err := sw.Sweep(ctx); err != nil {

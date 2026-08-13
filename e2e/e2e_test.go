@@ -33,6 +33,8 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -75,6 +77,8 @@ type harness struct {
 
 	labd   *exec.Cmd
 	kbased *exec.Cmd
+
+	canaries []canary // foreign/unlabeled containers the sweep must never touch
 }
 
 // freePort reserves an ephemeral localhost port and releases it for
@@ -164,6 +168,11 @@ func newHarness(t *testing.T) *harness {
 	h.goBuild(filepath.Join(binDir, "claudestub"), "./e2e/claudestub",
 		[]string{"GOOS=linux", "GOARCH=" + arch, "CGO_ENABLED=0"})
 
+	// Plant the canaries BEFORE labd ever runs: containers + volumes
+	// that look like other deployments' agents. Every boot sweep in the
+	// suite (including the kill-9 restart's) must leave them alone.
+	h.plantCanaries(ctx)
+
 	h.kbased = h.startDaemon("kbased")
 	h.waitHealthz(h.kbasedAddr)
 	h.labd = h.startDaemon("labd")
@@ -171,6 +180,81 @@ func newHarness(t *testing.T) *harness {
 
 	t.Cleanup(h.teardown)
 	return h
+}
+
+// Canaries: one container labeled as a *foreign deployment's* agent
+// and one with no deployment label at all (the pre-fix labeling), each
+// with a .claude volume. The boot sweep sees both — their agent ids do
+// not exist in the (fresh) e2e database, which is exactly the state
+// that once made the sweep destroy real dev agents — and must classify
+// them as foreign and never remove them.
+type canary struct {
+	name        string
+	agentID     string
+	containerID string
+}
+
+func (h *harness) plantCanaries(ctx context.Context) {
+	h.t.Helper()
+	// The base agent image builds FROM debian:bookworm-slim, so this
+	// pull is warm after any prior suite/image build.
+	if _, _, err := h.docker.ImageInspectWithRaw(ctx, "debian:bookworm-slim"); err != nil {
+		rc, err := h.docker.ImagePull(ctx, "debian:bookworm-slim", image.PullOptions{})
+		if err != nil {
+			h.t.Fatalf("pulling canary image: %v", err)
+		}
+		io.Copy(io.Discard, rc)
+		rc.Close()
+	}
+	plant := func(name string, labels map[string]string, agentID string) canary {
+		resp, err := h.docker.ContainerCreate(ctx, &container.Config{
+			Image:  "debian:bookworm-slim",
+			Cmd:    []string{"sleep", "infinity"},
+			Labels: labels,
+		}, nil, nil, nil, name)
+		if err != nil {
+			h.t.Fatalf("planting canary %s: %v", name, err)
+		}
+		if _, err := h.docker.VolumeCreate(ctx, volume.CreateOptions{Name: "lab-claude-" + agentID}); err != nil {
+			h.t.Fatalf("planting canary volume for %s: %v", name, err)
+		}
+		return canary{name: name, agentID: agentID, containerID: resp.ID}
+	}
+	foreignID, unlabeledID := uuid.NewString(), uuid.NewString()
+	h.canaries = []canary{
+		plant("lab-agent-"+foreignID, map[string]string{
+			"lab.agent-id":   foreignID,
+			"lab.project-id": uuid.NewString(),
+			"lab.deployment": "canary-foreign-deployment",
+		}, foreignID),
+		plant("lab-agent-"+unlabeledID, map[string]string{
+			"lab.agent-id":   unlabeledID,
+			"lab.project-id": uuid.NewString(),
+		}, unlabeledID),
+	}
+	h.t.Cleanup(h.removeCanaries)
+}
+
+// assertCanariesAlive fails the test if any canary container or volume
+// has been removed.
+func (h *harness) assertCanariesAlive(ctx context.Context) {
+	h.t.Helper()
+	for _, c := range h.canaries {
+		if _, err := h.docker.ContainerInspect(ctx, c.containerID); err != nil {
+			h.t.Errorf("canary container %s (agent %s) is gone: %v — the sweep touched a foreign deployment's container", c.name, c.agentID, err)
+		}
+		if _, err := h.docker.VolumeInspect(ctx, "lab-claude-"+c.agentID); err != nil {
+			h.t.Errorf("canary volume lab-claude-%s is gone: %v — the sweep touched a foreign deployment's volume", c.agentID, err)
+		}
+	}
+}
+
+func (h *harness) removeCanaries() {
+	ctx := context.Background()
+	for _, c := range h.canaries {
+		h.docker.ContainerRemove(ctx, c.containerID, container.RemoveOptions{Force: true})
+		h.docker.VolumeRemove(ctx, "lab-claude-"+c.agentID, true)
+	}
 }
 
 func (h *harness) goBuild(out, pkg string, extraEnv []string) {
@@ -577,6 +661,11 @@ func TestE2E(t *testing.T) {
 		if done := h.waitTurn(fresh.ID, 3*time.Minute); done.Status != "done" {
 			t.Fatalf("post-recovery turn = %+v, want done", done)
 		}
+
+		// The restart's boot sweep saw the canaries (agent ids unknown
+		// to lab_e2e) and must have classified them foreign, not
+		// removed them.
+		h.assertCanariesAlive(ctx)
 	})
 
 	t.Run("04_retire_chains_successor", func(t *testing.T) {
@@ -637,5 +726,12 @@ func TestE2E(t *testing.T) {
 		if done := h.waitTurn(held.ID, 2*time.Minute); done.Status != "done" {
 			t.Fatalf("released turn = %+v, want done", done)
 		}
+	})
+
+	t.Run("06_canaries_survive_the_suite", func(t *testing.T) {
+		// End-of-suite check: after every sweep, provision cycle, and
+		// the kill-9 restart, the foreign-labeled and unlabeled canary
+		// containers and their volumes are untouched.
+		h.assertCanariesAlive(ctx)
 	})
 }

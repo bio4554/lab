@@ -99,6 +99,15 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 
 	st := store.New(pool)
+	// Deployment identity: derived from the database, stamped on every
+	// container this daemon creates, and the boundary of the boot
+	// sweep's authority — containers without this exact label are
+	// another deployment's and are never touched.
+	deploymentID, err := st.DeploymentID(ctx)
+	if err != nil {
+		return err
+	}
+	log.Info("deployment identity", "deployment", deploymentID)
 	git := gitrepo.NewManager(cfg.DataDir)
 	rt, err := runtime.New()
 	if err != nil {
@@ -146,16 +155,17 @@ func run(cfg config.Config, log *slog.Logger) error {
 
 	wake := claude.NewWakeHub()
 	driver := claude.New(claude.Options{
-		Store:       st,
-		Git:         git,
-		Runtime:     rt,
-		Builder:     runtime.NewBuilder(rt, builderOpts),
-		Creds:       creds.NewSource(st, vault, log),
-		Logger:      log,
-		AgentAPIURL: apiURL,
-		TurnGate:    gate,
-		KBase:       kbase,
-		TurnWake:    wake.Chan,
+		Store:        st,
+		Git:          git,
+		Runtime:      rt,
+		Builder:      runtime.NewBuilder(rt, builderOpts),
+		Creds:        creds.NewSource(st, vault, log),
+		Logger:       log,
+		DeploymentID: deploymentID,
+		AgentAPIURL:  apiURL,
+		TurnGate:     gate,
+		KBase:        kbase,
+		TurnWake:     wake.Chan,
 	})
 	manager := claude.NewManager(driver, log)
 
@@ -174,7 +184,7 @@ func run(cfg config.Config, log *slog.Logger) error {
 	// agents to idle. A failed sweep (e.g. Docker down) degrades to a
 	// warning: the daemon can still serve the API and repair on its
 	// next boot.
-	sweeper := &claude.Sweeper{St: st, Rt: rt, Log: log}
+	sweeper := &claude.Sweeper{St: st, Rt: rt, Deployment: deploymentID, Log: log}
 	if err := sweeper.Sweep(ctx); err != nil {
 		log.Warn("boot reconciliation sweep incomplete", "error", err)
 	}
