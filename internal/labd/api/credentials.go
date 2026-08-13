@@ -324,6 +324,11 @@ func (s *ClientServer) usageStatus(w http.ResponseWriter, r *http.Request) {
 			verdict := wire.BudgetVerdict{Allowed: true}
 			if s.Gate != nil {
 				v, err := s.Gate.Check(ctx, a.ID)
+				if errors.Is(err, store.ErrNotFound) {
+					// The agent was deleted between the listing and the
+					// check; drop its row rather than failing the report.
+					continue
+				}
 				if err != nil {
 					writeError(s.Log, w, http.StatusInternalServerError, err)
 					return
