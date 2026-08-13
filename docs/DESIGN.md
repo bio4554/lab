@@ -168,6 +168,13 @@ Per agent, `labd` runs one container:
   surprises): one of `ANTHROPIC_API_KEY` **or** `CLAUDE_CODE_OAUTH_TOKEN`;
   plus `LAB_AGENT_ID`, `LAB_AGENT_TOKEN`, `LAB_API_URL`, `KBASE_URL`,
   `KBASE_TOKEN`, `LAB_PROJECT`.
+- **Labels**: `lab.agent-id`, `lab.project-id`, and (Phase 12)
+  `lab.deployment` — a short hash of the Postgres cluster identifier +
+  database OID identifying the owning labd. The boot reconciliation
+  sweep only ever removes containers carrying its own deployment label;
+  foreign or unlabeled containers are skipped, so two labds sharing a
+  Docker daemon (e.g. dev and the e2e suite) cannot destroy each
+  other's agents.
 - **Network**: default bridge + `host.docker.internal`. (Tighter egress
   policies are a post-v1 concern.)
 
@@ -181,6 +188,10 @@ Per agent, `labd` runs one container:
 - **Persistence = resumption, not process lifetime.** The `claude` process
   may die (container restart, host reboot); the agent's continuity comes
   from `--resume <claude_session_id>` against the mounted `.claude` volume.
+  A deterministically unresumable id (three consecutive immediate exits of
+  a `--resume` process) trips a breaker: the recorded id is cleared with a
+  WARN and the next process starts fresh instead of wedging the agent
+  (Phase 12).
 - **Context lifecycle**: long-lived agents exhaust context. Policy per
   agent: rely on auto-compaction, or **retire the session** and boot a
   fresh one seeded with the identity prompt + kbase recall. Session

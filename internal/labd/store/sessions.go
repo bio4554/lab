@@ -55,8 +55,6 @@ func (s *Store) EndSession(ctx context.Context, id uuid.UUID, reason string) err
 	return nil
 }
 
-// SetClaudeSessionID records the Claude Code session id once the CLI
-// reports it, enabling --resume after restarts.
 // ClearClaudeSessionID nulls a session's claude_session_id so the next
 // process starts without --resume. The driver's resume crash-loop
 // breaker uses it when a recorded id is deterministically unresumable.
@@ -72,6 +70,8 @@ func (s *Store) ClearClaudeSessionID(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// SetClaudeSessionID records the Claude Code session id once the CLI
+// reports it, enabling --resume after restarts.
 func (s *Store) SetClaudeSessionID(ctx context.Context, id uuid.UUID, claudeSessionID string) error {
 	tag, err := s.pool.Exec(ctx,
 		"UPDATE lab.sessions SET claude_session_id = $2 WHERE id = $1", id, claudeSessionID)

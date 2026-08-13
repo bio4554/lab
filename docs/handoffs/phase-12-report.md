@@ -357,3 +357,53 @@ resume-exits-instantly ×3 → fresh start without resume).
 Re-verified after the fixes: `make check` green; claude + store suites
 green under `-race`; `make e2e` green twice consecutively with the
 canaries planted (canary assertions active in subtests 03 and 06).
+
+---
+
+## Orchestrator re-review — closed (2026-08-13)
+
+Both bounce fixes verified; merged to `development` (merge commit on
+top of dbe4174). **The plan's final phase is closed.**
+
+**Fix 1 (deployment identity)**: diff read — the id derives from
+`pg_control_system().system_identifier` + database OID (no migration,
+collision-free across databases), flows to container labels via the
+driver and to the sweep's filter; the empty-id guard and
+fatal-on-derivation-failure guardrails are exactly right. Verified
+three ways: the suite's own foreign + unlabeled canaries survive
+subtests 03 and 06; an *independently planted* unlabeled canary
+container + volume of mine survived two full `make e2e` runs; and the
+dev daemon logged its identity (`c394b619bf41`), stamped it on a real
+container, and swept around everything else.
+
+**Fix 2 (resume breaker)**: diff read — counts only immediate
+(<10s) exits of `--resume` processes, three strikes clears the id via
+the store and starts fresh; retirement/poke/long-lived processes reset
+the counter. `TestResumeCrashLoopBreaker` drives the real Run loop
+through a fake process seam.
+
+**Checks**: `make check` green post-merge; claude/store/runtime
+suites `-race` twice; secret scan clean; `make e2e` green twice
+(13.5s / 12.4s, six subtests).
+
+**Manual kill -9 demo (real agent, real Claude — the owed acceptance
+run)**: worker1 mid-`sleep 60` turn (status `running`) → labd
+SIGKILLed → restarted: the sweep logged "resetting working agent to
+idle" and "erroring turn orphaned mid-turn" *before* the listeners
+came up; the turn shows exactly `error | labd restarted mid-turn`;
+the next turn ("Reply with exactly: recovered") completed `done` with
+the answer "recovered" — resuming the same session across the crash.
+Clean SIGTERM teardown afterwards; zero token material in either log.
+
+**Regression spot-check**: the post-crash turns above are the real
+agent loop end-to-end on the merged code (driver, gate, kbase env,
+attribution surfaces untouched by the fixes); the e2e suite covers
+the orchestration primitives deterministically every run.
+
+Cosmetic close-out fix: restored `SetClaudeSessionID`'s doc comment,
+which the Fix-2 insertion had detached.
+
+With this, **phases 0–12 are complete** — the plan is done. The
+curated backlog (kbase-ticket dogfooding deferred by the user) and
+post-v1 items remain recorded in the orchestrator's workfile and the
+handoffs' out-of-scope lists.

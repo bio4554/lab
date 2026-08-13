@@ -65,7 +65,7 @@ Ground rules for impl agents (repeated in every handoff):
 | 9     | kbase core: daemon, CLI, recall        | **done** (5d323f1, merged; in-container demo run by orchestrator) | phase-09-kbase | 0 (schema), 6 (tokens pattern) |
 | 10    | kbase graph & tickets                  | **done** (416c2c7, merged; demo re-run by orchestrator) | phase-10-graph-tickets | 9          |
 | 11    | lab-agent & orchestration loop         | **done** (6c03b04, merged; e2e demo run by orchestrator) | phase-11-lab-agent | 6, 9, 10   |
-| 12    | Integration hardening                  | pending | —      | all        |
+| 12    | Integration hardening                  | **done** (2f8f6fd+fixes, merged; e2e + kill-9 demo run by orchestrator) | phase-12-hardening | all        |
 
 Phases 1–4 are independent of each other and can run as parallel impl
 agents. So can 7/8, and 9 alongside 7/8.
