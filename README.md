@@ -4,6 +4,19 @@ An orchestration harness for persistent Claude Code agents running in
 Docker sandboxes. See [docs/DESIGN.md](docs/DESIGN.md) for the
 architecture and [docs/PLAN.md](docs/PLAN.md) for the phased build plan.
 
+## Quick start
+
+Requires Go 1.24+, git, and Docker. From a fresh clone:
+
+```sh
+make startd    # terminal A: Postgres up, schema migrated, labd built & running
+make startc    # terminal B: the lab TUI, built & connected to labd
+```
+
+`startd` sources `~/.lab/demo.env` when it exists — put your
+`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` there (outside the
+repo) so agents with env-passthrough credentials can run.
+
 ## Development
 
 Requires Go 1.24+, git, and Docker.
