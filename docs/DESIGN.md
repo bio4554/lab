@@ -155,6 +155,13 @@ Per agent, `labd` runs one container:
 - **Image**: the project's stack image.
 - **Mounts**:
   - `/work` — the agent's worktree (rw).
+  - the project's bare `repo.git`, bind-mounted rw at its **identical
+    host path**: a worktree's `.git` is a link file recording that
+    absolute path, so the same-path mount is what makes `git` work
+    inside the container (commit/log/status on the agent's branch).
+    Added after the phase-11 e2e demo surfaced that in-container git
+    had never actually worked. (Scoping this mount tighter than the
+    whole bare repo is a phase-12 concern.)
   - `/home/agent/.claude` — named volume per agent: Claude Code session
     state survives container/host restarts.
 - **Env** (exactly these credentials, nothing else, to avoid precedence
@@ -179,7 +186,22 @@ Per agent, `labd` runs one container:
   fresh one seeded with the identity prompt + kbase recall. Session
   retirement is a first-class daemon operation (records reason, links old →
   new session). This makes kbase load-bearing for memory, which is the
-  point.
+  point. As built (Phase 11): **occupancy** = the current session's
+  latest result event's `input + cache_creation + cache_read` tokens,
+  surfaced as `context_tokens` in both API listings, the `lab-agent
+  agents` CONTEXT column, and the TUI usage tab; a per-agent
+  `retire_context_tokens` threshold (NULL = never) auto-retires in the
+  pump at the moment a result closes a turn — never mid-turn. The
+  default successor seed (`claude.RetireSeed`) instructs the successor
+  to recover its own state via `kbase recall` / `kbase ticket list`
+  rather than embedding recall output server-side; an explicit seed is
+  used verbatim. Spawn: agents with `can_spawn` may create-and-start
+  workers via `POST /v1/agents` on the agent API — the worker lands in
+  the caller's project, inherits the caller's credential id, and gets
+  `can_spawn=false` (no transitive spawning). Role templates live in
+  `roles/`; because agents cannot wake themselves, the templates close
+  the loop by having workers send a completion turn back to their
+  orchestrator.
 - **Identity injection**: `--append-system-prompt` (role/persona, stored per
   agent) + `CLAUDE.md` in the worktree for project conventions.
 - Permission gating hook (post-v1): `--permission-prompt-tool` served by

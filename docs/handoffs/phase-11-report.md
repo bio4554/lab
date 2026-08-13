@@ -198,3 +198,62 @@ Toggling `can_spawn` after creation; spawn-name 409 mapping; spawn
 quotas / budget inheritance beyond the credential binding; TUI
 orchestration views beyond the usage-tab line; cross-process rebind
 pokes; retiring other agents via lab-agent.
+
+---
+
+## Orchestrator review — closed (2026-08-13)
+
+Reviewed against the phase-11 handoff acceptance criteria. **Zero
+bounces** on the phase's own scope. Merged to `development` as
+83f2300; one harness fix landed alongside (317edc1, below).
+
+**Code review**: full 24-file diff read (+1742/−42). Spawn checks the
+*caller's* flag before decoding, forces `can_spawn=false` on workers,
+and copies only the credential id; the occupancy query is
+latest-result-wins per session with COALESCEd fields; the pump's
+threshold check reuses the just-received result (no extra query) and
+fires only after the turn is closed; restart pokes are consumed only
+while idle; `Run` re-reads the agent row each provision cycle so
+rebinds/thresholds apply on the next process. All six recorded
+decisions accepted (seed defaulting in callers, in-process poke map,
+spawn-name 409 mapping deferred to Phase 12).
+
+**Checks**: `make check` green on branch and post-merge; the four new
+suites pass `-race -count=1` twice; migration 00005 down/up
+round-trips (columns verified). Secret scan clean.
+
+**Live e2e demo (real Claude, oauth credential)**: orchestrator
+(`roles/orchestrator.md`, can_spawn) + worker1 (`roles/worker.md`) on
+a sample project. One human turn produced: three kbase tickets (the
+third opened *by the orchestrator on its own* after it noticed
+setup.md exceeded the 30-line cap), worker turns attributed
+(`source_kind=agent`, sender rendered by name), claim/start/comment/
+done provenance across principals (v1 `agent:orchestrator`, v2+
+`agent:worker1`), real commits on `agent/worker1` (fdb854b, 1a0f968),
+and a verified completion report. Occupancy gauge live throughout
+(`lab-agent agents`: orchestrator 92k → 1.2M, worker 500k).
+Retirement leg: empty-seed client-API retire → successor chained via
+`prev_session_id`, default RetireSeed enqueued, and the successor
+actually ran `kbase recall` + `kbase ticket list`, concluded all
+tickets complete, cleared its status. Gauge reset with the new
+session. Zero token material in daemon logs or the event store; clean
+SIGTERM teardown.
+
+**Latent harness bug found by the demo (not a phase-11 defect)**: git
+had never worked inside agent containers — a worktree's `.git` links
+to the host `repo.git`, which was never mounted. The worker hit it on
+its first commit, correctly refused to fake success, and left the
+tickets `in_progress` with explanatory comments. Fixed in 317edc1
+(orchestrator): `repo.git` is bind-mounted at its identical host path
+(runtime spec + driver + gitrepo accessor + runtime test); verified
+live, after which the worker committed and finished. DESIGN's
+container contract updated. Follow-ups filed for Phase 12: scope the
+repo.git mount tighter, and the labd restart port-bind race (a new
+labd racing the old one's drain exits on "address already in use").
+
+**Second finding**: the orchestrator ended its turn "waiting" for the
+worker, but nothing re-prompts an agent — the loop stalled until a
+human nudge. Root cause: the worker template never told workers to
+report back. Fixed in 317edc1: workers now send a completion turn to
+their orchestrator; the orchestrator template states explicitly that a
+worker's message is what resumes its loop.
