@@ -412,5 +412,11 @@ func (m model) usageTable(w int) string {
 		rows = append(rows, hairline(w-2))
 		rows = append(rows, sAccent.Render(truncate(format("Σ project", usageCell(sum.LastHour), usageCell(sum.Today), usageTotalCell(sum.Total)), w-2)))
 	}
+	// The selected agent's current context occupancy (the rollup rows
+	// above sum across turns; this is what the window holds right now).
+	if m.curAgent != nil {
+		rows = append(rows, "", sText.Render(truncate(
+			fmt.Sprintf("context: %s tokens", fmtTokens(m.curAgent.ContextTokens)), w-2)))
+	}
 	return strings.Join(rows, "\n")
 }

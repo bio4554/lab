@@ -182,6 +182,11 @@ func (d *Driver) pump(ctx context.Context, agent store.Agent, sess store.Session
 		if current != nil {
 			return nil, nil
 		}
+		// A restart poke (credential rebind) applies at the turn
+		// boundary: never mid-turn, but promptly even when idle.
+		if d.takeRestartPoke(agent.ID) {
+			return nil, errRestartRequested
+		}
 		if d.gate != nil {
 			queued, err := d.st.PeekQueuedTurn(dbctx, agent.ID)
 			if err != nil || queued == nil {
@@ -252,9 +257,18 @@ func (d *Driver) pump(ctx context.Context, agent store.Agent, sess store.Session
 			if err := handleEvent(m.ev); err != nil {
 				return nil, err
 			}
-			// A result frees the queue slot; check for the next turn
-			// immediately rather than waiting out a poll tick.
+			// A result frees the queue slot: first enforce the context
+			// threshold (a crossing retires the session between turns,
+			// never mid-turn), then check for the next turn immediately
+			// rather than waiting out a poll tick.
 			if m.ev.Kind == streamjson.KindResult {
+				retired, err := d.maybeRetireForContext(dbctx, agent, m.ev)
+				if err != nil {
+					return nil, err
+				}
+				if retired {
+					return nil, errSessionRetired
+				}
 				if carried, err := tryNextTurn(); err != nil {
 					return carried, err
 				}
@@ -271,6 +285,34 @@ func (d *Driver) pump(ctx context.Context, agent store.Agent, sess store.Session
 			}
 		}
 	}
+}
+
+// maybeRetireForContext retires the agent's session when the result
+// event's context occupancy (input + cache-creation + cache-read
+// tokens — what the context window held on this turn) has reached the
+// agent's retire_context_tokens threshold. Called only after a result
+// closes a turn, so retirement never lands mid-turn; the successor
+// session starts at occupancy 0, so exactly one retirement fires per
+// crossing.
+func (d *Driver) maybeRetireForContext(ctx context.Context, agent store.Agent, ev streamjson.Event) (bool, error) {
+	if agent.RetireContextTokens == nil {
+		return false, nil
+	}
+	res, err := ev.Result()
+	if err != nil {
+		return false, nil
+	}
+	occupancy := res.Usage.InputTokens + res.Usage.CacheCreationInputTokens + res.Usage.CacheReadInputTokens
+	if occupancy < *agent.RetireContextTokens {
+		return false, nil
+	}
+	reason := fmt.Sprintf("context threshold (%d tokens)", *agent.RetireContextTokens)
+	d.log.Info("context threshold crossed; retiring session",
+		"agent", agent.Name, "occupancy", occupancy, "threshold", *agent.RetireContextTokens)
+	if _, err := d.Retire(ctx, agent.ID, reason, RetireSeed(reason, agent.Name)); err != nil {
+		return false, fmt.Errorf("claude: auto-retire: %w", err)
+	}
+	return true, nil
 }
 
 // drainShutdown is the cooperative shutdown path: close stdin (the

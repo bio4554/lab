@@ -87,19 +87,26 @@ type Agent struct {
 	ContainerID  *string         `db:"container_id"`
 	Branch       string          `db:"branch"`
 	StatusText   *string         `db:"status_text"`
-	CreatedAt    time.Time       `db:"created_at"`
+	// CanSpawn allows the agent to create workers via the agent API.
+	CanSpawn bool `db:"can_spawn"`
+	// RetireContextTokens, when set, auto-retires the agent's session
+	// between turns once context occupancy reaches it. NULL = never.
+	RetireContextTokens *int64    `db:"retire_context_tokens"`
+	CreatedAt           time.Time `db:"created_at"`
 }
 
 // NewAgent holds the caller-supplied fields for CreateAgent. A nil
 // Budget defaults to '{}'.
 type NewAgent struct {
-	ProjectID    uuid.UUID
-	Name         string
-	RolePrompt   string
-	Model        *string
-	CredentialID *uuid.UUID
-	Budget       json.RawMessage
-	Branch       string
+	ProjectID           uuid.UUID
+	Name                string
+	RolePrompt          string
+	Model               *string
+	CredentialID        *uuid.UUID
+	Budget              json.RawMessage
+	Branch              string
+	CanSpawn            bool
+	RetireContextTokens *int64
 }
 
 type Session struct {

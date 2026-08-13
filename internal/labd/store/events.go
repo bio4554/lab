@@ -105,6 +105,31 @@ func (s *Store) MaxEventID(ctx context.Context) (int64, error) {
 	return id, nil
 }
 
+// SessionContextTokens returns the session's context occupancy: the
+// latest result event's input_tokens + cache_creation_input_tokens +
+// cache_read_input_tokens — what the context window actually held on
+// the last turn. 0 when the session has no result event yet (fresh or
+// just-retired sessions start empty).
+func (s *Store) SessionContextTokens(ctx context.Context, sessionID uuid.UUID) (int64, error) {
+	var tokens int64
+	err := s.pool.QueryRow(ctx, `
+		SELECT COALESCE((payload->'usage'->>'input_tokens')::bigint, 0)
+		     + COALESCE((payload->'usage'->>'cache_creation_input_tokens')::bigint, 0)
+		     + COALESCE((payload->'usage'->>'cache_read_input_tokens')::bigint, 0)
+		FROM lab.events
+		WHERE session_id = $1 AND kind = 'result'
+		ORDER BY seq DESC
+		LIMIT 1`,
+		sessionID).Scan(&tokens)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("session context tokens: %w", err)
+	}
+	return tokens, nil
+}
+
 // EventsSinceID returns up to limit events with id > afterEventID
 // across all sessions, in id order — the global tail.
 func (s *Store) EventsSinceID(ctx context.Context, afterEventID int64, limit int) ([]Event, error) {

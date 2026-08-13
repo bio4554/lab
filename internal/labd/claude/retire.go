@@ -2,11 +2,26 @@ package claude
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 
 	"github.com/bio4554/lab/internal/labd/store"
 )
+
+// RetireSeed is the default first prompt of a successor session, used
+// by auto-retirement and when a retire request carries no explicit
+// seed. Identity is already re-injected via --append-system-prompt;
+// the seed's job is memory recovery through kbase — the successor
+// pulls its own memory via the CLI (fresher than embedding recall
+// output server-side, and CLI-over-Bash is the standard agent
+// interface).
+func RetireSeed(reason, recallQuery string) string {
+	return fmt.Sprintf("Your previous session was retired (%s). "+
+		"Recover your working state: run `kbase recall %q`, `kbase ticket list`, "+
+		"and `kbase show` on anything relevant, then continue your work. "+
+		"Report status with `lab-agent status`.", reason, recallQuery)
+}
 
 // Retire ends the agent's current session and starts a fresh one:
 // the old session is ended with reason, a new session is created

@@ -100,7 +100,16 @@ type Agent struct {
 	PausedUntil  *time.Time `json:"paused_until,omitempty"`
 	SessionID    *uuid.UUID `json:"session_id,omitempty"`
 	Running      bool       `json:"running"` // a driver is hosted for it right now
-	CreatedAt    time.Time  `json:"created_at"`
+	// CanSpawn allows the agent to create workers via the agent API.
+	CanSpawn bool `json:"can_spawn"`
+	// ContextTokens is the current session's context occupancy: the
+	// latest result event's input + cache-creation + cache-read tokens
+	// (0 for a fresh session).
+	ContextTokens int64 `json:"context_tokens"`
+	// RetireContextTokens, when set, auto-retires the session between
+	// turns once ContextTokens reaches it.
+	RetireContextTokens *int64    `json:"retire_context_tokens,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
 }
 
 // CreateAgentRequest creates an agent in a project. CredentialID binds
@@ -115,6 +124,12 @@ type CreateAgentRequest struct {
 	CredentialID   *uuid.UUID      `json:"credential_id,omitempty"`
 	CredentialKind string          `json:"credential_kind,omitempty"`
 	Budget         json.RawMessage `json:"budget,omitempty"`
+	// CanSpawn marks an orchestrator: it may create workers via the
+	// agent API's spawn endpoint.
+	CanSpawn bool `json:"can_spawn,omitempty"`
+	// RetireContextTokens sets the auto-retirement context threshold
+	// (nil = never auto-retire).
+	RetireContextTokens *int64 `json:"retire_context_tokens,omitempty"`
 }
 
 // SetAgentCredentialRequest rebinds the agent to a credential; null
@@ -282,4 +297,14 @@ type Whoami struct {
 // the stored status.
 type ReportStatusRequest struct {
 	Status string `json:"status"`
+}
+
+// SpawnAgentRequest is the agent API's worker-spawn request. The
+// spawned agent lands in the caller's project, inherits the caller's
+// credential binding, gets can_spawn = false, and is started
+// immediately. Callable only by agents whose can_spawn is true.
+type SpawnAgentRequest struct {
+	Name       string `json:"name"`
+	RolePrompt string `json:"role_prompt,omitempty"`
+	Model      string `json:"model,omitempty"`
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/bio4554/lab/internal/labd/claude"
+	"github.com/bio4554/lab/internal/labd/gitrepo"
 	"github.com/bio4554/lab/internal/labd/store"
 	"github.com/bio4554/lab/internal/wire"
 )
@@ -39,6 +40,7 @@ func (s *AgentServer) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/whoami", s.whoami)
 	mux.HandleFunc("GET /v1/agents", s.siblings)
+	mux.HandleFunc("POST /v1/agents", s.spawn)
 	mux.HandleFunc("POST /v1/agents/{agent}/turns", s.sendTurn)
 	mux.HandleFunc("POST /v1/status", s.reportStatus)
 	return s.authenticate(mux)
@@ -116,9 +118,66 @@ func (s *AgentServer) siblings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		running := s.Manager != nil && s.Manager.IsRunning(a.ID)
-		out = append(out, toWireAgent(a, sess, running))
+		wa := toWireAgent(a, sess, running)
+		if wa.ContextTokens, err = agentContextTokens(ctx, s.Store, sess); err != nil {
+			writeError(s.Log, w, http.StatusInternalServerError, err)
+			return
+		}
+		out = append(out, wa)
 	}
 	writeJSON(s.Log, w, http.StatusOK, out)
+}
+
+// spawn creates and starts a worker agent in the caller's project —
+// the orchestration primitive behind `lab-agent spawn`. Only agents
+// whose can_spawn is true may call it; the spawned agent inherits the
+// caller's credential binding (an orchestrator cannot mint access it
+// doesn't have) and always gets can_spawn = false (no transitive
+// spawning).
+func (s *AgentServer) spawn(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	caller := callerFrom(ctx)
+	if !caller.CanSpawn {
+		writeError(s.Log, w, http.StatusForbidden, errors.New("caller is not allowed to spawn agents"))
+		return
+	}
+	var req wire.SpawnAgentRequest
+	if err := decodeBody(r, &req); err != nil {
+		writeError(s.Log, w, http.StatusBadRequest, err)
+		return
+	}
+	if req.Name == "" {
+		writeError(s.Log, w, http.StatusBadRequest, errors.New("name is required"))
+		return
+	}
+	na := store.NewAgent{
+		ProjectID:    caller.ProjectID,
+		Name:         req.Name,
+		RolePrompt:   req.RolePrompt,
+		CredentialID: caller.CredentialID,
+		Branch:       gitrepo.BranchName(req.Name),
+	}
+	if req.Model != "" {
+		na.Model = &req.Model
+	}
+	agent, err := s.Store.CreateAgent(ctx, na)
+	if err != nil {
+		writeError(s.Log, w, http.StatusInternalServerError, err)
+		return
+	}
+	s.Log.Info("agent spawned via agent API",
+		"spawned", agent.Name, "spawned_id", agent.ID,
+		"by", caller.Name, "by_id", caller.ID, "project", caller.ProjectID)
+	// Spawn-and-start is the useful primitive: an orchestrator spawns
+	// workers to use them. A start failure leaves the created agent in
+	// place (visible in listings, startable by the human).
+	if s.Manager != nil {
+		if err := s.Manager.Start(agent.ID); err != nil {
+			s.Log.Error("starting spawned agent", "agent", agent.Name, "error", err)
+		}
+	}
+	running := s.Manager != nil && s.Manager.IsRunning(agent.ID)
+	writeJSON(s.Log, w, http.StatusCreated, toWireAgent(agent, nil, running))
 }
 
 // sendTurn enqueues a turn for an agent in the caller's project, with

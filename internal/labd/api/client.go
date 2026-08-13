@@ -242,10 +242,12 @@ func (s *ClientServer) agentCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	na := store.NewAgent{
-		ProjectID:  proj.ID,
-		Name:       req.Name,
-		RolePrompt: req.RolePrompt,
-		Branch:     gitrepo.BranchName(req.Name),
+		ProjectID:           proj.ID,
+		Name:                req.Name,
+		RolePrompt:          req.RolePrompt,
+		Branch:              gitrepo.BranchName(req.Name),
+		CanSpawn:            req.CanSpawn,
+		RetireContextTokens: req.RetireContextTokens,
 	}
 	if req.Model != "" {
 		na.Model = &req.Model
@@ -303,6 +305,10 @@ func (s *ClientServer) agentList(w http.ResponseWriter, r *http.Request) {
 		}
 		running := s.Manager != nil && s.Manager.IsRunning(a.ID)
 		wa := toWireAgent(a, sess, running)
+		if wa.ContextTokens, err = agentContextTokens(ctx, s.Store, sess); err != nil {
+			writeError(s.Log, w, http.StatusInternalServerError, err)
+			return
+		}
 		// A paused agent surfaces its credential's recorded reset time.
 		if a.State == store.AgentStatePaused && a.CredentialID != nil {
 			cred, ok := credCache[*a.CredentialID]
@@ -400,6 +406,11 @@ func (s *ClientServer) agentRetire(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Reason == "" {
 		req.Reason = "retired via client API"
+	}
+	if req.Seed == "" {
+		// Default seed: memory recovery through kbase (see RetireSeed).
+		// An explicit seed is used verbatim.
+		req.Seed = claude.RetireSeed(req.Reason, agent.Name)
 	}
 	sess, err := s.Driver.Retire(ctx, agent.ID, req.Reason, req.Seed)
 	if err != nil {
