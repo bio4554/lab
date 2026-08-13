@@ -54,7 +54,7 @@ func loadFixtureEvents(t *testing.T, name string) []wire.Event {
 
 func TestBuildTranscriptToolUseFixture(t *testing.T) {
 	events := loadFixtureEvents(t, "tool_use.jsonl")
-	entries := buildTranscript(events, "coder")
+	entries := buildTranscript(events, "coder", nil)
 
 	var kinds []entryKind
 	for _, e := range entries {
@@ -105,7 +105,7 @@ func TestBuildTranscriptToolUseFixture(t *testing.T) {
 
 func TestBuildTranscriptUnknownKinds(t *testing.T) {
 	events := loadFixtureEvents(t, "unknown_kind.jsonl")
-	entries := buildTranscript(events, "a")
+	entries := buildTranscript(events, "a", nil)
 	if len(entries) != len(events) {
 		t.Fatalf("entries = %d, want %d (all raw)", len(entries), len(events))
 	}
@@ -121,7 +121,7 @@ func TestBuildTranscriptUnknownKinds(t *testing.T) {
 
 func TestBuildTranscriptSimpleFixture(t *testing.T) {
 	events := loadFixtureEvents(t, "simple.jsonl")
-	entries := buildTranscript(events, "coder")
+	entries := buildTranscript(events, "coder", nil)
 	var texts []string
 	for _, e := range entries {
 		if e.Kind == entryAgent {
@@ -147,8 +147,49 @@ func TestBuildTranscriptSortsBySeq(t *testing.T) {
 	for i, e := range events {
 		rev[len(events)-1-i] = e
 	}
-	if got, want := buildTranscript(rev, "a"), buildTranscript(events, "a"); len(got) != len(want) || got[0] != want[0] {
+	if got, want := buildTranscript(rev, "a", nil), buildTranscript(events, "a", nil); len(got) != len(want) || got[0] != want[0] {
 		t.Errorf("reversed input produced a different transcript")
+	}
+}
+
+func TestBuildTranscriptInjectsTurnPrompts(t *testing.T) {
+	events := loadFixtureEvents(t, "tool_use.jsonl")
+	// Stamp the substantive events (everything after init) with a turn.
+	turnID := uuid.New()
+	for i := range events {
+		if i > 0 {
+			events[i].TurnID = &turnID
+		}
+	}
+	turns := map[uuid.UUID]TurnInfo{turnID: {Who: "you", Content: "echo hello please"}}
+	entries := buildTranscript(events, "coder", turns)
+
+	var userIdx = -1
+	for i, e := range entries {
+		if e.Kind == entryUser {
+			if userIdx != -1 {
+				t.Fatalf("prompt injected more than once: %+v", entries)
+			}
+			userIdx = i
+		}
+	}
+	if userIdx == -1 {
+		t.Fatalf("no user entry; entries %+v", entries)
+	}
+	e := entries[userIdx]
+	if e.Who != "you" || e.Text != "echo hello please" || e.Time == "" {
+		t.Errorf("user entry = %+v", e)
+	}
+	// The prompt precedes the tool call it caused.
+	for i := range entries[:userIdx] {
+		if entries[i].Kind == entryTool {
+			t.Errorf("tool entry before the turn prompt: %+v", entries)
+		}
+	}
+
+	// Unknown turn ids inject nothing (until the cache fills).
+	if got := buildTranscript(events, "coder", nil); len(got) != len(entries)-1 {
+		t.Errorf("nil turns: %d entries, want %d", len(got), len(entries)-1)
 	}
 }
 

@@ -55,7 +55,11 @@ hints that change with focus.
   tool one-liners (name + input summary, ✓/✗ once the tool_result
   arrives), `✔/✘` result lines (duration · in→out tok · cost), dim
   `·`-prefixed raw lines for unknown kinds, session-start marker with
-  model. Composer at the bottom (enter sends, ctrl+j newline, grows
+  model. The CLI does not echo prompts as events, so the TUI injects
+  each turn's prompt as the `you ▌` line itself (agent-sent turns get
+  the source agent's name): turn ids seen in the stream are resolved
+  once via `GET /v1/turns/{id}` and cached.
+  Composer at the bottom (enter sends, ctrl+j newline, grows
   to 5 lines); the tab row shows the in-flight turn as
   `turn <id> · queued/running/done`, driven by stream events. The
   transcript follows the agent's current session across retires.

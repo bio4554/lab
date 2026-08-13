@@ -63,6 +63,14 @@ type turnQueuedMsg struct {
 	err  error
 }
 
+// turnFetchedMsg resolves a turn_id seen in the event stream to its
+// prompt content for transcript display.
+type turnFetchedMsg struct {
+	id   uuid.UUID
+	turn wire.Turn
+	err  error
+}
+
 const requestTimeout = 5 * time.Second
 
 func apiCtx() (context.Context, context.CancelFunc) {
@@ -147,6 +155,15 @@ func actionCmd(action string, f func(ctx context.Context) error) tea.Cmd {
 		ctx, cancel := apiCtx()
 		defer cancel()
 		return actionMsg{action: action, err: f(ctx)}
+	}
+}
+
+func getTurnCmd(c *labclient.Client, id uuid.UUID) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := apiCtx()
+		defer cancel()
+		turn, err := c.GetTurn(ctx, id)
+		return turnFetchedMsg{id: id, turn: turn, err: err}
 	}
 }
 

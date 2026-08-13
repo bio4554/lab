@@ -101,6 +101,11 @@ type model struct {
 	composer textarea.Model
 	inFlight map[uuid.UUID]wire.Turn // per agent: last turn submitted here
 
+	// Prompts behind turn_ids seen in the stream, for transcript
+	// display (the CLI does not echo prompts as events).
+	turnCache map[uuid.UUID]wire.Turn
+	turnFetch map[uuid.UUID]bool // fetches in flight
+
 	form    *form
 	lastErr string // transient action error (footer)
 }
@@ -119,6 +124,8 @@ func newModel(client *labclient.Client, addr string) model {
 		collapsed:   map[uuid.UUID]bool{},
 		transcripts: map[uuid.UUID]*transcriptState{},
 		inFlight:    map[uuid.UUID]wire.Turn{},
+		turnCache:   map[uuid.UUID]wire.Turn{},
+		turnFetch:   map[uuid.UUID]bool{},
 		composer:    ta,
 		follow:      true,
 		vp:          viewport.New(0, 0),
@@ -161,7 +168,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil // program is shutting down
 		}
 		m.onEvent(msg.ev)
-		return m, waitEvCmd(m.stream)
+		return m, tea.Batch(append(m.missingTurnCmds(), waitEvCmd(m.stream))...)
 
 	case streamStMsg:
 		if !msg.ok {
@@ -183,7 +190,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		ts.add(msg.events...)
 		ts.backfilled = true
 		m.refreshTranscript()
-		return m, nil
+		return m, tea.Batch(m.missingTurnCmds()...)
 
 	case sessionsMsg:
 		if msg.err != nil {
@@ -222,6 +229,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.inFlight[msg.turn.AgentID] = msg.turn
+		m.turnCache[msg.turn.ID] = msg.turn
+		return m, nil
+
+	case turnFetchedMsg:
+		delete(m.turnFetch, msg.id)
+		if msg.err != nil {
+			// Quietly retried: the id stays uncached, so the next
+			// stream/backfill activity re-requests it.
+			return m, nil
+		}
+		m.turnCache[msg.id] = msg.turn
+		m.refreshTranscript()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -338,6 +357,50 @@ func (m *model) rebuildTree() {
 	if m.treeSel >= len(m.tree) {
 		m.treeSel = max(0, len(m.tree)-1)
 	}
+}
+
+// missingTurnCmds requests any turn ids present in the viewed
+// session's events but not yet cached or being fetched.
+func (m *model) missingTurnCmds() []tea.Cmd {
+	ts := m.transcripts[m.viewSession]
+	if ts == nil {
+		return nil
+	}
+	var cmds []tea.Cmd
+	for _, e := range ts.events {
+		if e.TurnID == nil {
+			continue
+		}
+		id := *e.TurnID
+		if _, cached := m.turnCache[id]; cached || m.turnFetch[id] {
+			continue
+		}
+		m.turnFetch[id] = true
+		cmds = append(cmds, getTurnCmd(m.client, id))
+	}
+	return cmds
+}
+
+// turnInfos labels cached turns for transcript injection: "you" for
+// user turns, the source agent's name (any project) for agent turns.
+func (m *model) turnInfos() map[uuid.UUID]TurnInfo {
+	infos := make(map[uuid.UUID]TurnInfo, len(m.turnCache))
+	for id, turn := range m.turnCache {
+		who := "you"
+		if turn.SourceKind == "agent" {
+			who = "agent"
+			if turn.SourceID != nil {
+				for _, list := range m.agents {
+					if a := findAgent(list, *turn.SourceID); a != nil {
+						who = a.Name
+						break
+					}
+				}
+			}
+		}
+		infos[id] = TurnInfo{Who: who, Content: turn.Content}
+	}
+	return infos
 }
 
 // refreshTranscript re-renders the viewport content from the view

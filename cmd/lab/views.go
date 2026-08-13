@@ -13,10 +13,12 @@ const treeWidth = 28
 // layout re-derives component sizes from the window and current pane
 // contents.
 func (m *model) layout() {
-	mainW := m.mainWidth()
-	m.vp.Width = mainW
+	// The main pane has 1 column of padding each side; the composer
+	// box adds a border (2 columns) around the textarea.
+	innerW := m.mainWidth() - 2
+	m.vp.Width = innerW
 	m.vp.Height = m.transcriptHeight()
-	m.composer.SetWidth(mainW - 4)
+	m.composer.SetWidth(innerW - 3)
 	m.refreshTranscript()
 }
 
@@ -295,7 +297,7 @@ func (m *model) transcriptContent() string {
 	if len(ts.events) == 0 {
 		return sDim.Render("no events in this session yet")
 	}
-	entries := buildTranscript(ts.events, m.curAgent.Name)
+	entries := buildTranscript(ts.events, m.curAgent.Name, m.turnInfos())
 	lines := make([]string, len(entries))
 	for i, e := range entries {
 		lines[i] = renderEntry(e, m.curAgent.Name, m.vp.Width-2)
@@ -319,7 +321,9 @@ func (m model) composerView(w int) string {
 	if m.focus == focusComposer {
 		box = sFocusBox
 	}
-	return box.Width(w - 2).Render(m.composer.View())
+	// lipgloss Width excludes the border: content w-4 + border 2 fits
+	// the pane's inner width (w-2) exactly.
+	return box.Width(w - 4).Render(m.composer.View())
 }
 
 // ── sessions table ───────────────────────────────────────────────────

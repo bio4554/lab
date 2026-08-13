@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/bio4554/lab/internal/streamjson"
 	"github.com/bio4554/lab/internal/wire"
 )
@@ -32,6 +34,7 @@ type TranscriptEntry struct {
 	Kind entryKind
 	Text string // main text (message body, marker text, raw line)
 	Time string // HH:MM:SS stamp shown on user turns
+	Who  string // entryUser gutter label ("you", or a source agent)
 
 	// entryTool only:
 	Tool        string
@@ -46,17 +49,38 @@ type TranscriptEntry struct {
 // outcome on the same entry.
 type toolCall struct{ entryIdx int }
 
+// TurnInfo is the prompt behind a turn_id, injected into the
+// transcript at the turn's first event (the CLI does not echo prompts
+// as events). Who labels the gutter: "you" for user turns, the source
+// agent's name for agent turns.
+type TurnInfo struct {
+	Who     string
+	Content string
+}
+
 // buildTranscript folds stored events into transcript entries.
-// agentName labels assistant text blocks. Events must belong to one
-// session; they are sorted by seq before folding.
-func buildTranscript(events []wire.Event, agentName string) []TranscriptEntry {
+// agentName labels assistant text blocks; turns maps turn ids to their
+// prompts (unknown ids simply render no prompt line until the caller
+// learns them). Events must belong to one session; they are sorted by
+// seq before folding.
+func buildTranscript(events []wire.Event, agentName string, turns map[uuid.UUID]TurnInfo) []TranscriptEntry {
 	sorted := make([]wire.Event, len(events))
 	copy(sorted, events)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Seq < sorted[j].Seq })
 
 	var entries []TranscriptEntry
-	pending := map[string]toolCall{} // tool_use id → entry
+	pending := map[string]toolCall{}   // tool_use id → entry
+	shownTurns := map[uuid.UUID]bool{} // turn ids already prefixed
 	for _, e := range sorted {
+		if e.TurnID != nil && !shownTurns[*e.TurnID] {
+			if info, ok := turns[*e.TurnID]; ok {
+				shownTurns[*e.TurnID] = true
+				entries = append(entries, TranscriptEntry{
+					Kind: entryUser, Who: info.Who, Text: info.Content,
+					Time: e.TS.Local().Format("15:04:05"),
+				})
+			}
+		}
 		ev := streamjson.Event{Raw: []byte(e.Payload)}
 		var env struct {
 			Type    string `json:"type"`
@@ -108,7 +132,7 @@ func buildTranscript(events []wire.Event, agentName string) []TranscriptEntry {
 				case "text":
 					if strings.TrimSpace(b.Text) != "" {
 						entries = append(entries, TranscriptEntry{
-							Kind: entryUser, Text: b.Text, Time: e.TS.Local().Format("15:04:05"),
+							Kind: entryUser, Who: "you", Text: b.Text, Time: e.TS.Local().Format("15:04:05"),
 						})
 					}
 				case "tool_result":
@@ -251,13 +275,18 @@ func renderEntry(entry TranscriptEntry, agentName string, width int) string {
 	case entryMarker:
 		return sDim.Render(truncate(entry.Text, width))
 	case entryUser:
-		gutter := sAccent.Render("you ▌ ")
+		who := entry.Who
+		if who == "" {
+			who = "you"
+		}
+		gutter := sAccent.Render(who + " ▌ ")
+		indent := len(who) + 3
 		stamp := ""
 		if entry.Time != "" {
 			stamp = "  " + sFaint.Render(entry.Time)
 		}
-		body := sText.Width(width - 6).Render(entry.Text)
-		return gutter + strings.TrimRight(indentCont(body, 6), "\n") + stamp
+		body := sText.Width(width - indent).Render(entry.Text)
+		return gutter + strings.TrimRight(indentCont(body, indent), "\n") + stamp
 	case entryAgent:
 		gutter := sAccent2.Render(agentName + " ▌ ")
 		w := width - len(agentName) - 3
