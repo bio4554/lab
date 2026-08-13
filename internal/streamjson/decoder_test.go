@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // decodeFile decodes every line of a fixture, failing the test on any
@@ -312,5 +313,55 @@ func TestLargeLineWithinLimit(t *testing.T) {
 	}
 	if len(msg.Content) != 1 || msg.Content[0].Type != "tool_result" {
 		t.Errorf("content = %+v", msg.Content)
+	}
+}
+
+// TestRateLimitAccessor parses the real rate_limit_event in the
+// tool_use fixture (line 2) and exercises the Limited/ResetTime
+// helpers on synthetic variants.
+func TestRateLimitAccessor(t *testing.T) {
+	events := decodeFile(t, "tool_use.jsonl")
+	if events[1].Kind != KindRateLimitEvent {
+		t.Fatalf("fixture line 2 kind = %q, want rate_limit_event", events[1].Kind)
+	}
+	rl, err := events[1].RateLimit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rl.Status != "allowed" || rl.RateLimitType != "five_hour" || rl.ResetsAt != 1786590000 {
+		t.Fatalf("rate limit = %+v", rl)
+	}
+	if rl.Limited() {
+		t.Error("status allowed reported as limited")
+	}
+	if got := rl.ResetTime(); got != time.Unix(1786590000, 0).UTC() {
+		t.Errorf("ResetTime = %v", got)
+	}
+
+	cases := []struct {
+		status  string
+		limited bool
+	}{
+		{"allowed", false},
+		{"allowed_warning", false},
+		{"", false},
+		{"rejected", true},
+		{"exceeded", true},
+	}
+	for _, tc := range cases {
+		if got := (RateLimit{Status: tc.status}).Limited(); got != tc.limited {
+			t.Errorf("Limited(%q) = %v, want %v", tc.status, got, tc.limited)
+		}
+	}
+	if !(RateLimit{}).ResetTime().IsZero() {
+		t.Error("zero resetsAt should give zero time")
+	}
+
+	// Wrong kind and missing info both error.
+	if _, err := (Event{Kind: KindSystem, Raw: []byte(`{}`)}).RateLimit(); err == nil {
+		t.Error("RateLimit on system event should error")
+	}
+	if _, err := (Event{Kind: KindRateLimitEvent, Raw: []byte(`{"type":"rate_limit_event"}`)}).RateLimit(); err == nil {
+		t.Error("RateLimit without rate_limit_info should error")
 	}
 }

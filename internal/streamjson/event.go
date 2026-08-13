@@ -11,14 +11,16 @@ package streamjson
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 // Known event kinds (the top-level "type" field).
 const (
-	KindSystem    = "system"
-	KindAssistant = "assistant"
-	KindUser      = "user"
-	KindResult    = "result"
+	KindSystem         = "system"
+	KindAssistant      = "assistant"
+	KindUser           = "user"
+	KindResult         = "result"
+	KindRateLimitEvent = "rate_limit_event"
 )
 
 // Known subtypes.
@@ -164,6 +166,54 @@ func (e Event) ToolUses() []ToolUse {
 		}
 	}
 	return uses
+}
+
+// RateLimit is the rate_limit_info payload of a rate_limit_event: the
+// CLI's view of the credential's current rate-limit window.
+type RateLimit struct {
+	Status          string `json:"status"`
+	ResetsAt        int64  `json:"resetsAt"` // unix seconds
+	RateLimitType   string `json:"rateLimitType"`
+	OverageStatus   string `json:"overageStatus"`
+	OverageResetsAt int64  `json:"overageResetsAt"` // unix seconds
+	IsUsingOverage  bool   `json:"isUsingOverage"`
+}
+
+// Limited reports whether the event says the credential has hit its
+// window limit. "allowed" and "allowed_warning" (approaching the
+// limit) pass; any other non-empty status is treated as limited.
+func (r RateLimit) Limited() bool {
+	switch r.Status {
+	case "", "allowed", "allowed_warning":
+		return false
+	}
+	return true
+}
+
+// ResetTime returns resetsAt as a time, zero when absent.
+func (r RateLimit) ResetTime() time.Time {
+	if r.ResetsAt == 0 {
+		return time.Time{}
+	}
+	return time.Unix(r.ResetsAt, 0).UTC()
+}
+
+// RateLimit parses a rate_limit_event. It errors on any other kind, or
+// when the event carries no rate_limit_info object.
+func (e Event) RateLimit() (*RateLimit, error) {
+	if e.Kind != KindRateLimitEvent {
+		return nil, fmt.Errorf("streamjson: RateLimit on %q event", e.Kind)
+	}
+	var wrap struct {
+		Info *RateLimit `json:"rate_limit_info"`
+	}
+	if err := json.Unmarshal(e.Raw, &wrap); err != nil {
+		return nil, fmt.Errorf("streamjson: parsing rate_limit_event: %w", err)
+	}
+	if wrap.Info == nil {
+		return nil, fmt.Errorf("streamjson: rate_limit_event has no rate_limit_info")
+	}
+	return wrap.Info, nil
 }
 
 // Usage is the token accounting attached to a result event.

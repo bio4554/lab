@@ -4,7 +4,9 @@
 // TUI replaces this.
 //
 //	labctl project create -name X -origin <url|path> -stack go
-//	labctl agent create -project X -name impl1 [-role "..."] [-model m] [-cred api_key|oauth_token]
+//	labctl cred add -kind api_key|oauth_token -label personal [-expires RFC3339|never]   (secret on stdin)
+//	labctl cred list
+//	labctl agent create -project X -name impl1 [-role "..."] [-model m] [-cred api_key|oauth_token] [-cred-id id]
 //	labctl agent run -project X -name impl1
 //	labctl send -project X -agent impl1 "prompt text"
 //	labctl tail -project X -agent impl1
@@ -17,6 +19,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -25,10 +28,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bio4554/lab/internal/config"
+	"github.com/bio4554/lab/internal/labd/budget"
 	"github.com/bio4554/lab/internal/labd/claude"
+	"github.com/bio4554/lab/internal/labd/creds"
 	"github.com/bio4554/lab/internal/labd/gitrepo"
 	"github.com/bio4554/lab/internal/labd/runtime"
 	"github.com/bio4554/lab/internal/labd/store"
@@ -51,12 +57,12 @@ type app struct {
 
 func run() error {
 	args := os.Args[1:]
-	// "agent create|run" is a two-word subcommand.
-	if len(args) > 0 && (args[0] == "agent" || args[0] == "project") && len(args) > 1 {
+	// "agent create|run" etc. are two-word subcommands.
+	if len(args) > 0 && (args[0] == "agent" || args[0] == "project" || args[0] == "cred") && len(args) > 1 {
 		args = append([]string{args[0] + " " + args[1]}, args[2:]...)
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: labctl <project create|agent create|agent run|send|tail|retire|merge> ...")
+		return fmt.Errorf("usage: labctl <project create|cred add|cred list|agent create|agent run|send|tail|retire|merge> ...")
 	}
 	cmd, rest := args[0], args[1:]
 
@@ -79,6 +85,10 @@ func run() error {
 	switch cmd {
 	case "project create":
 		return a.projectCreate(ctx, rest)
+	case "cred add":
+		return a.credAdd(ctx, rest)
+	case "cred list":
+		return a.credList(ctx, rest)
 	case "agent create":
 		return a.agentCreate(ctx, rest)
 	case "agent run":
@@ -137,13 +147,97 @@ func originKind(origin string) (kind, resolved string) {
 	return store.OriginKindLocalPath, origin
 }
 
+// credAdd registers a credential, reading the secret from stdin so it
+// never lands in shell history or process listings. Onboarding:
+// `claude setup-token` in a terminal, paste the token, Ctrl-D.
+func (a app) credAdd(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("cred add", flag.ExitOnError)
+	kind := fs.String("kind", "", "credential kind: api_key|oauth_token")
+	label := fs.String("label", "", "human label, e.g. personal")
+	expires := fs.String("expires", "", "expiry as RFC3339, or 'never'; default for oauth_token: now + 1 year (the setup-token lifetime)")
+	fs.Parse(args)
+	if *kind != store.CredentialKindAPIKey && *kind != store.CredentialKindOAuthToken {
+		return fmt.Errorf("cred add: -kind must be api_key or oauth_token")
+	}
+	if *label == "" {
+		return fmt.Errorf("cred add: -label is required")
+	}
+	var expiresAt *time.Time
+	switch *expires {
+	case "never":
+	case "":
+		if *kind == store.CredentialKindOAuthToken {
+			t := time.Now().UTC().Add(365 * 24 * time.Hour)
+			expiresAt = &t
+		}
+	default:
+		t, err := time.Parse(time.RFC3339, *expires)
+		if err != nil {
+			return fmt.Errorf("cred add: -expires: %w", err)
+		}
+		expiresAt = &t
+	}
+
+	if fi, err := os.Stdin.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+		fmt.Fprintln(os.Stderr, "paste the secret, then Enter and Ctrl-D:")
+	}
+	raw, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return fmt.Errorf("cred add: reading secret from stdin: %w", err)
+	}
+	secret := strings.TrimSpace(string(raw))
+	if secret == "" {
+		return fmt.Errorf("cred add: empty secret on stdin")
+	}
+
+	vault, err := creds.Open(a.cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	enc, err := vault.Encrypt(secret)
+	if err != nil {
+		return err
+	}
+	cred, err := a.st.CreateCredential(ctx, store.NewCredential{
+		Kind: *kind, SecretEnc: enc, Label: *label, ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		return err
+	}
+	exp := "never"
+	if cred.ExpiresAt != nil {
+		exp = cred.ExpiresAt.UTC().Format(time.RFC3339)
+	}
+	fmt.Printf("credential %s added (id %s, kind %s, expires %s)\n", cred.Label, cred.ID, cred.Kind, exp)
+	return nil
+}
+
+func (a app) credList(ctx context.Context, _ []string) error {
+	credentials, err := a.st.ListCredentials(ctx)
+	if err != nil {
+		return err
+	}
+	for _, c := range credentials {
+		exp, limited := "never", ""
+		if c.ExpiresAt != nil {
+			exp = c.ExpiresAt.UTC().Format(time.RFC3339)
+		}
+		if c.LimitedUntil != nil {
+			limited = " rate-limited until " + c.LimitedUntil.UTC().Format(time.RFC3339)
+		}
+		fmt.Printf("%s  %-11s %-8s expires %s  %s%s\n", c.ID, c.Kind, c.Status, exp, c.Label, limited)
+	}
+	return nil
+}
+
 func (a app) agentCreate(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("agent create", flag.ExitOnError)
 	project := fs.String("project", "", "project name")
 	name := fs.String("name", "", "agent name")
 	role := fs.String("role", "", "role prompt (--append-system-prompt)")
 	model := fs.String("model", "", "model override")
-	cred := fs.String("cred", "", "credential kind: api_key|oauth_token (secret read from env at run time)")
+	cred := fs.String("cred", "", "credential kind: api_key|oauth_token (binds the only stored credential of that kind)")
+	credID := fs.String("cred-id", "", "credential id (see cred list)")
 	fs.Parse(args)
 	if *project == "" || *name == "" {
 		return fmt.Errorf("agent create: -project and -name are required")
@@ -159,19 +253,40 @@ func (a app) agentCreate(ctx context.Context, args []string) error {
 	if *model != "" {
 		na.Model = model
 	}
-	if *cred != "" {
+	switch {
+	case *credID != "":
+		id, err := uuid.Parse(*credID)
+		if err != nil {
+			return fmt.Errorf("agent create: -cred-id: %w", err)
+		}
+		if _, err := a.st.GetCredential(ctx, id); err != nil {
+			return fmt.Errorf("agent create: credential %s: %w", id, err)
+		}
+		na.CredentialID = &id
+	case *cred != "":
+		// Kind-based binding: resolves the only stored credential of
+		// the kind (add one first with `labctl cred add`).
 		if *cred != store.CredentialKindAPIKey && *cred != store.CredentialKindOAuthToken {
 			return fmt.Errorf("agent create: -cred must be api_key or oauth_token")
 		}
-		// Phase 5: the row records only the kind; the secret comes
-		// from the driver's environment (see claude.EnvCredentialSource).
-		c, err := a.st.CreateCredential(ctx, store.NewCredential{
-			Kind: *cred, SecretEnc: []byte{}, Label: "env passthrough (" + *name + ")",
-		})
+		all, err := a.st.ListCredentials(ctx)
 		if err != nil {
 			return err
 		}
-		na.CredentialID = &c.ID
+		var matches []store.Credential
+		for _, c := range all {
+			if c.Kind == *cred {
+				matches = append(matches, c)
+			}
+		}
+		switch len(matches) {
+		case 0:
+			return fmt.Errorf("agent create: no stored credential of kind %s (labctl cred add -kind %s -label ...)", *cred, *cred)
+		case 1:
+			na.CredentialID = &matches[0].ID
+		default:
+			return fmt.Errorf("agent create: %d credentials of kind %s; use -cred-id (see labctl cred list)", len(matches), *cred)
+		}
 	}
 	agent, err := a.st.CreateAgent(ctx, na)
 	if err != nil {
@@ -204,9 +319,15 @@ func (a app) driver() (*claude.Driver, error) {
 	if err != nil {
 		return nil, err
 	}
+	vault, err := creds.Open(a.cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	return claude.New(claude.Options{
 		Store: a.st, Git: a.git, Runtime: rt,
-		Builder: runtime.NewBuilder(rt, runtime.BuilderOptions{}),
+		Builder:  runtime.NewBuilder(rt, runtime.BuilderOptions{}),
+		Creds:    creds.NewSource(a.st, vault, nil),
+		TurnGate: &budget.Gate{St: a.st},
 	}), nil
 }
 

@@ -97,6 +97,27 @@ func (s *Store) NextQueuedTurn(ctx context.Context, agentID uuid.UUID) (*Turn, e
 	return &turn, nil
 }
 
+// PeekQueuedTurn returns the agent's oldest queued turn without
+// claiming it, or nil when the queue is empty. The pump peeks before
+// consulting the budget gate so a denied turn is never flipped to
+// running.
+func (s *Store) PeekQueuedTurn(ctx context.Context, agentID uuid.UUID) (*Turn, error) {
+	rows, _ := s.pool.Query(ctx, `
+		SELECT `+turnCols+` FROM lab.turns
+		WHERE agent_id = $1 AND status = 'queued'
+		ORDER BY created_at, id
+		LIMIT 1`,
+		agentID)
+	turn, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Turn])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("peek queued turn: %w", err)
+	}
+	return &turn, nil
+}
+
 // RunningTurn returns the agent's running turn, or nil if none. The
 // driver uses it on startup to error turns orphaned by a crash.
 func (s *Store) RunningTurn(ctx context.Context, agentID uuid.UUID) (*Turn, error) {

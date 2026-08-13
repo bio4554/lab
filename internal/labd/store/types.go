@@ -15,7 +15,8 @@ const (
 	CredentialKindAPIKey     = "api_key"
 	CredentialKindOAuthToken = "oauth_token"
 
-	CredentialStatusActive = "active"
+	CredentialStatusActive  = "active"
+	CredentialStatusExpired = "expired"
 
 	AgentStateStopped = "stopped"
 	AgentStateIdle    = "idle"
@@ -52,22 +53,26 @@ type NewProject struct {
 }
 
 type Credential struct {
-	ID        uuid.UUID  `db:"id"`
-	Kind      string     `db:"kind"`
-	SecretEnc []byte     `db:"secret_enc"`
-	Label     string     `db:"label"`
-	Status    string     `db:"status"`
-	ExpiresAt *time.Time `db:"expires_at"`
-	CreatedAt time.Time  `db:"created_at"`
+	ID           uuid.UUID       `db:"id"`
+	Kind         string          `db:"kind"`
+	SecretEnc    []byte          `db:"secret_enc"`
+	Label        string          `db:"label"`
+	Status       string          `db:"status"`
+	ExpiresAt    *time.Time      `db:"expires_at"`
+	Budget       json.RawMessage `db:"budget"`
+	LimitedUntil *time.Time      `db:"limited_until"`
+	CreatedAt    time.Time       `db:"created_at"`
 }
 
 // NewCredential holds the caller-supplied fields for CreateCredential.
 // SecretEnc is opaque to the store; encryption is the caller's problem.
+// A nil Budget defaults to '{}'.
 type NewCredential struct {
 	Kind      string
 	SecretEnc []byte
 	Label     string
 	ExpiresAt *time.Time
+	Budget    json.RawMessage
 }
 
 type Agent struct {

@@ -12,7 +12,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/bio4554/lab/internal/labd/budget"
 	"github.com/bio4554/lab/internal/labd/claude"
+	"github.com/bio4554/lab/internal/labd/creds"
 	"github.com/bio4554/lab/internal/labd/gitrepo"
 	"github.com/bio4554/lab/internal/labd/store"
 	"github.com/bio4554/lab/internal/wire"
@@ -30,6 +32,10 @@ func newClientServer(t *testing.T) (*httptest.Server, *store.Store, *pgxpool.Poo
 	hubCtx, stopHub := context.WithCancel(context.Background())
 	t.Cleanup(stopHub)
 	go hub.Run(hubCtx)
+	vault, err := creds.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	s := &ClientServer{
 		Store:   st,
 		Pool:    pool,
@@ -37,6 +43,8 @@ func newClientServer(t *testing.T) (*httptest.Server, *store.Store, *pgxpool.Poo
 		Driver:  driver,
 		Manager: claude.NewManager(driver, testLogger()),
 		Hub:     hub,
+		Vault:   vault,
+		Gate:    &budget.Gate{St: st, Log: testLogger()},
 		Version: "test",
 		Log:     testLogger(),
 	}
@@ -100,13 +108,24 @@ func TestProjectAndAgentCRUD(t *testing.T) {
 	}
 	doJSON(t, client, "GET", srv.URL+"/v1/projects/nonexistent-xyz", nil, nil, http.StatusNotFound, nil)
 
-	// Agents.
+	// Agents, bound to a stored credential by id (the kind-based
+	// compat shim is covered in TestCredentialAPI).
+	var cred wire.Credential
+	doJSON(t, client, "POST", srv.URL+"/v1/credentials",
+		wire.CreateCredentialRequest{Kind: "oauth_token", Label: "crud test " + name, Secret: "fabricated-crud-secret"},
+		&cred, http.StatusCreated, nil)
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), "DELETE FROM lab.credentials WHERE id = $1", cred.ID)
+	})
 	var agent wire.Agent
 	doJSON(t, client, "POST", srv.URL+"/v1/projects/"+name+"/agents",
-		wire.CreateAgentRequest{Name: "impl1", RolePrompt: "test role", CredentialKind: "oauth_token"},
+		wire.CreateAgentRequest{Name: "impl1", RolePrompt: "test role", CredentialID: &cred.ID},
 		&agent, http.StatusCreated, nil)
 	if agent.Name != "impl1" || agent.State != store.AgentStateStopped || agent.Branch != "agent/impl1" {
 		t.Errorf("created agent = %+v", agent)
+	}
+	if agent.CredentialID == nil || *agent.CredentialID != cred.ID {
+		t.Errorf("agent credential = %v, want %s", agent.CredentialID, cred.ID)
 	}
 	var agents []wire.Agent
 	doJSON(t, client, "GET", srv.URL+"/v1/projects/"+name+"/agents", nil, &agents, http.StatusOK, nil)

@@ -24,7 +24,9 @@ import (
 
 	"github.com/bio4554/lab/internal/config"
 	"github.com/bio4554/lab/internal/labd/api"
+	"github.com/bio4554/lab/internal/labd/budget"
 	"github.com/bio4554/lab/internal/labd/claude"
+	"github.com/bio4554/lab/internal/labd/creds"
 	"github.com/bio4554/lab/internal/labd/gitrepo"
 	"github.com/bio4554/lab/internal/labd/runtime"
 	"github.com/bio4554/lab/internal/labd/store"
@@ -102,6 +104,14 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 	defer rt.Close()
 
+	// The credential vault: refuses to start on a key file readable
+	// beyond its owner (the error says what to chmod).
+	vault, err := creds.Open(cfg.DataDir)
+	if err != nil {
+		return err
+	}
+	gate := &budget.Gate{St: st, Log: log}
+
 	apiURL, err := agentAPIURL(cfg.Labd.AgentAPIAddr)
 	if err != nil {
 		return err
@@ -112,8 +122,10 @@ func run(cfg config.Config, log *slog.Logger) error {
 		Git:         git,
 		Runtime:     rt,
 		Builder:     runtime.NewBuilder(rt, runtime.BuilderOptions{}),
+		Creds:       creds.NewSource(st, vault, log),
 		Logger:      log,
 		AgentAPIURL: apiURL,
+		TurnGate:    gate,
 		TurnWake:    wake.Chan,
 	})
 	manager := claude.NewManager(driver, log)
@@ -139,9 +151,38 @@ func run(cfg config.Config, log *slog.Logger) error {
 		}
 	}
 
+	// Credential sweep: expire past-expiry credentials and release
+	// passed rate-limit holds (resuming their paused agents). Lazy
+	// checks on use catch both sooner; this keeps listings honest and
+	// resumes agents with empty queues.
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-hubCtx.Done():
+				return
+			case <-ticker.C:
+				sweepCtx, cancel := context.WithTimeout(hubCtx, 10*time.Second)
+				if n, err := st.ExpireCredentials(sweepCtx, time.Now()); err != nil {
+					log.Warn("credential expiry sweep", "error", err)
+				} else if n > 0 {
+					log.Info("credentials expired", "count", n)
+				}
+				if n, err := st.ReleaseExpiredLimits(sweepCtx, time.Now()); err != nil {
+					log.Warn("rate-limit release sweep", "error", err)
+				} else if n > 0 {
+					log.Info("rate-limit holds released; agents resumed", "credentials", n)
+				}
+				cancel()
+			}
+		}
+	}()
+
 	clientSrv := &api.ClientServer{
 		Store: st, Pool: pool, Git: git,
 		Driver: driver, Manager: manager, Hub: hub,
+		Vault: vault, Gate: gate,
 		Version: version, Log: log,
 	}
 	agentSrv := &api.AgentServer{Store: st, Manager: manager, Log: log}

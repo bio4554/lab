@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -98,6 +99,36 @@ func (s *Store) SetAgentStatusText(ctx context.Context, id uuid.UUID, status *st
 		"UPDATE lab.agents SET status_text = $2 WHERE id = $1", id, status)
 	if err != nil {
 		return fmt.Errorf("set agent status text: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetAgentBudget replaces the agent's budget limits (see budget.Limits
+// for the jsonb contract).
+func (s *Store) SetAgentBudget(ctx context.Context, id uuid.UUID, budget json.RawMessage) error {
+	if len(budget) == 0 {
+		budget = []byte("{}")
+	}
+	tag, err := s.pool.Exec(ctx,
+		"UPDATE lab.agents SET budget = $2 WHERE id = $1", id, budget)
+	if err != nil {
+		return fmt.Errorf("set agent budget: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetAgentCredential rebinds the agent to a credential; nil unbinds.
+func (s *Store) SetAgentCredential(ctx context.Context, id uuid.UUID, credentialID *uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx,
+		"UPDATE lab.agents SET credential_id = $2 WHERE id = $1", id, credentialID)
+	if err != nil {
+		return fmt.Errorf("set agent credential: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
