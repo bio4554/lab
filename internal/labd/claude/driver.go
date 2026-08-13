@@ -18,10 +18,20 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/bio4554/lab/internal/labd/budget"
 	"github.com/bio4554/lab/internal/labd/gitrepo"
 	"github.com/bio4554/lab/internal/labd/runtime"
 	"github.com/bio4554/lab/internal/labd/store"
 )
+
+// TurnGate is consulted before each queued turn is delivered to the
+// claude process. A denied turn stays queued (never errored); the pump
+// logs the denial once and re-checks on its poll/wake cadence, so the
+// turn delivers as soon as the gate opens. labd wires budget.Gate
+// here; nil always allows.
+type TurnGate interface {
+	Check(ctx context.Context, agentID uuid.UUID) (budget.Verdict, error)
+}
 
 // Sentinel pump outcomes, internal to the Run loop.
 var (
@@ -53,6 +63,9 @@ type Options struct {
 	// and injects LAB_AGENT_ID, LAB_AGENT_TOKEN, LAB_API_URL and
 	// LAB_PROJECT. Empty (labctl's in-process mode) injects none.
 	AgentAPIURL string
+	// TurnGate, when non-nil, is checked before every turn delivery;
+	// see the interface doc. Nil allows every turn.
+	TurnGate TurnGate
 	// TurnWake, when non-nil, returns a channel signalled whenever a
 	// turn is enqueued for the agent (labd wires this to LISTEN
 	// lab_turns). The idle poll remains the fallback.
@@ -82,6 +95,7 @@ type Driver struct {
 	log   *slog.Logger
 
 	agentAPIURL    string
+	gate           TurnGate
 	turnWake       func(uuid.UUID) <-chan struct{}
 	pollInterval   time.Duration
 	shutdownGrace  time.Duration
@@ -98,6 +112,7 @@ func New(opts Options) *Driver {
 		creds:          opts.Creds,
 		log:            opts.Logger,
 		agentAPIURL:    opts.AgentAPIURL,
+		gate:           opts.TurnGate,
 		turnWake:       opts.TurnWake,
 		pollInterval:   opts.PollInterval,
 		shutdownGrace:  opts.ShutdownGrace,

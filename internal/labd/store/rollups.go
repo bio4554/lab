@@ -78,6 +78,25 @@ func (s *Store) ProjectUsage(ctx context.Context, projectID uuid.UUID, hourStart
 	return usage, nil
 }
 
+// AgentUsageInWindow sums one agent's rollups (across credentials) for
+// windows starting at or after since. Zero-valued Usage when none.
+func (s *Store) AgentUsageInWindow(ctx context.Context, agentID uuid.UUID, since time.Time) (Usage, error) {
+	rows, _ := s.pool.Query(ctx, `
+		SELECT
+			COALESCE(SUM(tokens_in),  0)::bigint  AS tokens_in,
+			COALESCE(SUM(tokens_out), 0)::bigint  AS tokens_out,
+			COALESCE(SUM(cost_usd),   0)::float8  AS cost_usd,
+			COALESCE(SUM(turns),      0)::bigint  AS turns
+		FROM lab.usage_rollups
+		WHERE agent_id = $1 AND window_start >= $2`,
+		agentID, since)
+	usage, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Usage])
+	if err != nil {
+		return Usage{}, fmt.Errorf("agent usage in window: %w", err)
+	}
+	return usage, nil
+}
+
 // UsageInWindow sums a credential's rollups across all agents for
 // windows starting at or after since. Zero-valued Usage when none.
 func (s *Store) UsageInWindow(ctx context.Context, credentialID uuid.UUID, since time.Time) (Usage, error) {

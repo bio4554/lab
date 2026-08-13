@@ -65,15 +65,16 @@ func toWireProject(p store.Project) wire.Project {
 
 func toWireAgent(a store.Agent, sess *store.Session, running bool) wire.Agent {
 	wa := wire.Agent{
-		ID:         a.ID,
-		ProjectID:  a.ProjectID,
-		Name:       a.Name,
-		Model:      a.Model,
-		State:      a.State,
-		StatusText: a.StatusText,
-		Branch:     a.Branch,
-		Running:    running,
-		CreatedAt:  a.CreatedAt,
+		ID:           a.ID,
+		ProjectID:    a.ProjectID,
+		Name:         a.Name,
+		Model:        a.Model,
+		State:        a.State,
+		StatusText:   a.StatusText,
+		Branch:       a.Branch,
+		CredentialID: a.CredentialID,
+		Running:      running,
+		CreatedAt:    a.CreatedAt,
 	}
 	if sess != nil {
 		wa.SessionID = &sess.ID

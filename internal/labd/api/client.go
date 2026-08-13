@@ -14,14 +14,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/bio4554/lab/internal/labd/budget"
 	"github.com/bio4554/lab/internal/labd/claude"
+	"github.com/bio4554/lab/internal/labd/creds"
 	"github.com/bio4554/lab/internal/labd/gitrepo"
 	"github.com/bio4554/lab/internal/labd/runtime"
 	"github.com/bio4554/lab/internal/labd/store"
 	"github.com/bio4554/lab/internal/wire"
 )
 
-// ClientServer is the client (TUI) API. Localhost only, no auth in v1.
+// ClientServer is the client (TUI) API. Localhost only, no auth in v1
+// — which is also why credential creation may carry the secret in the
+// request body.
 type ClientServer struct {
 	Store   *store.Store
 	Pool    *pgxpool.Pool // health checks only
@@ -29,6 +33,8 @@ type ClientServer struct {
 	Driver  *claude.Driver  // Retire
 	Manager *claude.Manager // start/stop drivers
 	Hub     *Hub
+	Vault   *creds.Vault // encrypts credential secrets at rest
+	Gate    *budget.Gate // live verdicts for the usage status endpoint
 	Version string
 	Log     *slog.Logger
 }
@@ -54,6 +60,18 @@ func (s *ClientServer) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/projects/{project}/agents/{agent}/turns", s.turnSubmit)
 	mux.HandleFunc("GET /v1/projects/{project}/agents/{agent}/sessions", s.sessionList)
 	mux.HandleFunc("GET /v1/projects/{project}/usage", s.projectUsage)
+
+	mux.HandleFunc("POST /v1/credentials", s.credentialCreate)
+	mux.HandleFunc("GET /v1/credentials", s.credentialList)
+	mux.HandleFunc("DELETE /v1/credentials/{credential}", s.credentialDelete)
+	mux.HandleFunc("PUT /v1/credentials/{credential}/expiry", s.credentialSetExpiry)
+	mux.HandleFunc("POST /v1/credentials/{credential}/resume", s.credentialResume)
+	mux.HandleFunc("GET /v1/credentials/{credential}/budget", s.credentialBudgetGet)
+	mux.HandleFunc("PUT /v1/credentials/{credential}/budget", s.credentialBudgetSet)
+	mux.HandleFunc("GET /v1/projects/{project}/agents/{agent}/budget", s.agentBudgetGet)
+	mux.HandleFunc("PUT /v1/projects/{project}/agents/{agent}/budget", s.agentBudgetSet)
+	mux.HandleFunc("PUT /v1/projects/{project}/agents/{agent}/credential", s.agentCredentialSet)
+	mux.HandleFunc("GET /v1/usage", s.usageStatus)
 
 	mux.HandleFunc("GET /v1/turns/{id}", s.turnGet)
 	mux.HandleFunc("GET /v1/sessions/{session}/events", s.sessionEvents)
@@ -232,20 +250,25 @@ func (s *ClientServer) agentCreate(w http.ResponseWriter, r *http.Request) {
 	if req.Model != "" {
 		na.Model = &req.Model
 	}
-	if req.CredentialKind != "" {
-		if req.CredentialKind != store.CredentialKindAPIKey && req.CredentialKind != store.CredentialKindOAuthToken {
-			writeError(s.Log, w, http.StatusBadRequest,
-				errors.New("credential_kind must be api_key or oauth_token"))
+	if _, err := budget.ParseLimits(req.Budget); err != nil {
+		writeError(s.Log, w, http.StatusBadRequest, err)
+		return
+	}
+	na.Budget = req.Budget
+	switch {
+	case req.CredentialID != nil:
+		if _, err := s.Store.GetCredential(ctx, *req.CredentialID); err != nil {
+			writeError(s.Log, w, http.StatusBadRequest, fmt.Errorf("credential %s: %w", req.CredentialID, err))
 			return
 		}
-		// Phase 5/6 stand-in: the row records only the kind; the secret
-		// comes from the daemon's environment at run time (Phase 8
-		// brings real storage).
-		cred, err := s.Store.CreateCredential(ctx, store.NewCredential{
-			Kind: req.CredentialKind, SecretEnc: []byte{}, Label: "env passthrough (" + req.Name + ")",
-		})
+		na.CredentialID = req.CredentialID
+	case req.CredentialKind != "":
+		// Phase 6 compat shim: the old API took a bare kind (env
+		// passthrough). Now it binds the only stored credential of
+		// that kind, erroring when none or several exist.
+		cred, err := s.credentialByKind(ctx, req.CredentialKind)
 		if err != nil {
-			writeError(s.Log, w, http.StatusInternalServerError, err)
+			writeError(s.Log, w, http.StatusBadRequest, err)
 			return
 		}
 		na.CredentialID = &cred.ID
@@ -270,6 +293,7 @@ func (s *ClientServer) agentList(w http.ResponseWriter, r *http.Request) {
 		writeError(s.Log, w, http.StatusInternalServerError, err)
 		return
 	}
+	credCache := map[uuid.UUID]store.Credential{}
 	out := make([]wire.Agent, 0, len(agents))
 	for _, a := range agents {
 		sess, err := s.Store.CurrentSession(ctx, a.ID)
@@ -278,9 +302,49 @@ func (s *ClientServer) agentList(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		running := s.Manager != nil && s.Manager.IsRunning(a.ID)
-		out = append(out, toWireAgent(a, sess, running))
+		wa := toWireAgent(a, sess, running)
+		// A paused agent surfaces its credential's recorded reset time.
+		if a.State == store.AgentStatePaused && a.CredentialID != nil {
+			cred, ok := credCache[*a.CredentialID]
+			if !ok {
+				cred, err = s.Store.GetCredential(ctx, *a.CredentialID)
+				if err != nil {
+					writeError(s.Log, w, http.StatusInternalServerError, err)
+					return
+				}
+				credCache[*a.CredentialID] = cred
+			}
+			wa.PausedUntil = cred.LimitedUntil
+		}
+		out = append(out, wa)
 	}
 	writeJSON(s.Log, w, http.StatusOK, out)
+}
+
+// credentialByKind resolves the Phase 6 compat shim: exactly one
+// stored credential of the kind.
+func (s *ClientServer) credentialByKind(ctx context.Context, kind string) (store.Credential, error) {
+	if kind != store.CredentialKindAPIKey && kind != store.CredentialKindOAuthToken {
+		return store.Credential{}, errors.New("credential_kind must be api_key or oauth_token")
+	}
+	all, err := s.Store.ListCredentials(ctx)
+	if err != nil {
+		return store.Credential{}, err
+	}
+	var matches []store.Credential
+	for _, c := range all {
+		if c.Kind == kind {
+			matches = append(matches, c)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return store.Credential{}, fmt.Errorf("no stored credential of kind %s; create one (labctl cred add) or pass credential_id", kind)
+	case 1:
+		return matches[0], nil
+	default:
+		return store.Credential{}, fmt.Errorf("%d credentials of kind %s; pass credential_id to disambiguate", len(matches), kind)
+	}
 }
 
 func (s *ClientServer) agentStart(w http.ResponseWriter, r *http.Request) {

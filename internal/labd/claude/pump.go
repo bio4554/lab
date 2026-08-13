@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -117,6 +118,18 @@ func (d *Driver) pump(ctx context.Context, agent store.Agent, sess store.Session
 			}
 			claudeSID = sid
 		}
+		if ev.Kind == streamjson.KindRateLimitEvent {
+			rl, err := ev.RateLimit()
+			if err != nil {
+				d.log.Warn("unparseable rate_limit_event", "agent", agent.Name, "error", err)
+				return nil
+			}
+			if rl.Limited() {
+				d.holdCredential(dbctx, agent, rl.ResetTime(),
+					fmt.Sprintf("rate_limit_event status %q (%s)", rl.Status, rl.RateLimitType))
+			}
+			return nil
+		}
 		if ev.Kind != streamjson.KindResult {
 			return nil
 		}
@@ -140,6 +153,9 @@ func (d *Driver) pump(ctx context.Context, agent store.Agent, sess store.Session
 				return err
 			}
 		}
+		if res != nil && res.IsError && limitShapedResult(ev.Raw) {
+			d.holdCredential(dbctx, agent, time.Time{}, "limit-shaped result error, subtype "+res.Subtype)
+		}
 		if res != nil && agent.CredentialID != nil {
 			window := time.Now().UTC().Truncate(time.Hour)
 			delta := store.UsageDelta{
@@ -157,10 +173,33 @@ func (d *Driver) pump(ctx context.Context, agent store.Agent, sess store.Session
 
 	// tryNextTurn fetches and delivers the next queued turn if idle.
 	// A turn addressed to another session means this session was
-	// retired: hand the turn back for the replacement process.
+	// retired: hand the turn back for the replacement process. The
+	// gate is consulted before the turn is claimed, so a denied turn
+	// stays queued untouched; the denial is logged once per reason and
+	// re-checked on every poll/wake.
+	var deniedLogged string
 	tryNextTurn := func() (*store.Turn, error) {
 		if current != nil {
 			return nil, nil
+		}
+		if d.gate != nil {
+			queued, err := d.st.PeekQueuedTurn(dbctx, agent.ID)
+			if err != nil || queued == nil {
+				return nil, err
+			}
+			verdict, err := d.gate.Check(dbctx, agent.ID)
+			if err != nil {
+				return nil, fmt.Errorf("claude: turn gate: %w", err)
+			}
+			if !verdict.Allowed {
+				if verdict.Reason != deniedLogged {
+					d.log.Info("turn held by budget gate", "agent", agent.Name,
+						"turn", queued.ID, "reason", verdict.Reason, "retry_after", verdict.RetryAfter)
+					deniedLogged = verdict.Reason
+				}
+				return nil, nil
+			}
+			deniedLogged = ""
 		}
 		turn, err := d.st.NextQueuedTurn(dbctx, agent.ID)
 		if err != nil || turn == nil {
@@ -271,6 +310,47 @@ func (d *Driver) drainShutdown(dbctx context.Context, agent store.Agent, proc pr
 			return cause
 		}
 	}
+}
+
+// defaultLimitHold is the rate-limit hold applied when a limit is
+// detected without a reset time (a limit-shaped result error). Short
+// on purpose: re-checking a few times beats stalling on a guess, and
+// loops still cannot spin against 429s at this cadence.
+const defaultLimitHold = 5 * time.Minute
+
+// limitErrPattern recognizes "unmistakable" rate/usage-limit result
+// errors. Only consulted on is_error results, whose text is an error
+// message rather than assistant output.
+var limitErrPattern = regexp.MustCompile(`(?i)rate.?limit|usage limit|too many requests|\b429\b`)
+
+func limitShapedResult(raw []byte) bool {
+	return limitErrPattern.Match(raw)
+}
+
+// holdCredential records a rate-limit hold on the agent's credential
+// until resetAt (defaultLimitHold from now when zero) and pauses every
+// idle/working agent riding it. Containers stay up and turns stay
+// queued; the budget gate keeps them queued until the hold passes (the
+// daemon sweep also resumes the paused agents), or until manual
+// resume. Failures are logged, not fatal: the pump must keep
+// persisting events.
+func (d *Driver) holdCredential(ctx context.Context, agent store.Agent, resetAt time.Time, why string) {
+	if agent.CredentialID == nil {
+		return
+	}
+	if resetAt.IsZero() {
+		resetAt = time.Now().UTC().Add(defaultLimitHold)
+	}
+	if err := d.st.SetCredentialLimited(ctx, *agent.CredentialID, &resetAt); err != nil {
+		d.log.Error("recording rate-limit hold", "credential", *agent.CredentialID, "error", err)
+		return
+	}
+	paused, err := d.st.PauseAgentsForCredential(ctx, *agent.CredentialID)
+	if err != nil {
+		d.log.Error("pausing agents for rate-limited credential", "credential", *agent.CredentialID, "error", err)
+	}
+	d.log.Warn("credential rate limited; agents paused",
+		"credential", *agent.CredentialID, "resets_at", resetAt, "agents_paused", paused, "cause", why)
 }
 
 // finishInterrupted errors the in-flight turn, if any, with reason.

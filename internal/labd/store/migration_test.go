@@ -82,8 +82,27 @@ func TestLabMigrationRoundTrip(t *testing.T) {
 		}
 	}
 
-	// Down once rolls back 00003 (agent_tokens); once more rolls back
-	// 00002 (the phase-1 tables).
+	// Down once rolls back 00004 (credential budget columns), then
+	// 00003 (agent_tokens), then 00002 (the phase-1 tables).
+	columnExists := func(table, column string) bool {
+		var exists bool
+		err := db.QueryRowContext(ctx,
+			"SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 AND column_name = $3)",
+			schema, table, column).Scan(&exists)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return exists
+	}
+	if !columnExists("credentials", "limited_until") {
+		t.Fatalf("after Up: credentials.limited_until missing")
+	}
+	if err := stream.Down(ctx, db); err != nil {
+		t.Fatalf("Down: %v", err)
+	}
+	if columnExists("credentials", "budget") || columnExists("credentials", "limited_until") {
+		t.Fatalf("after Down of 00004: credential budget columns still present")
+	}
 	if err := stream.Down(ctx, db); err != nil {
 		t.Fatalf("Down: %v", err)
 	}

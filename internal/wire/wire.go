@@ -35,33 +35,92 @@ type CreateProjectRequest struct {
 	Stack  string `json:"stack"`
 }
 
+// ── Credentials ───────────────────────────────────────────────────────
+
+// Credential is a stored credential as reported by the client API.
+// The secret is never on the wire in any direction but creation.
+// Budget is the limits jsonb (see CreateCredentialRequest).
+// LimitedUntil, when set and in the future, is a rate-limit hold:
+// turns of agents using this credential stay queued until it passes
+// (or a manual resume clears it).
+type Credential struct {
+	ID           uuid.UUID       `json:"id"`
+	Kind         string          `json:"kind"`
+	Label        string          `json:"label"`
+	Status       string          `json:"status"`
+	ExpiresAt    *time.Time      `json:"expires_at,omitempty"`
+	Budget       json.RawMessage `json:"budget,omitempty"`
+	LimitedUntil *time.Time      `json:"limited_until,omitempty"`
+	CreatedAt    time.Time       `json:"created_at"`
+}
+
+// CreateCredentialRequest registers a secret. The client API is
+// localhost-only, which makes a secret in the request body acceptable
+// for v1. Kind is api_key or oauth_token. When ExpiresAt is absent,
+// oauth tokens default to created_at + 1 year (the documented
+// setup-token lifetime); NoExpiry suppresses that default. Budget is
+// optional limits jsonb:
+// {"max_cost_usd_day": 5.0, "max_tokens_day": 2000000, "max_turns_hour": 30}.
+type CreateCredentialRequest struct {
+	Kind      string          `json:"kind"`
+	Label     string          `json:"label"`
+	Secret    string          `json:"secret"`
+	ExpiresAt *time.Time      `json:"expires_at,omitempty"`
+	NoExpiry  bool            `json:"no_expiry,omitempty"`
+	Budget    json.RawMessage `json:"budget,omitempty"`
+}
+
+// SetExpiryRequest sets (or clears, with null) a credential's expiry.
+type SetExpiryRequest struct {
+	ExpiresAt *time.Time `json:"expires_at"`
+}
+
+// BudgetPayload carries budget limits jsonb for the get/set endpoints
+// (agent and credential alike).
+type BudgetPayload struct {
+	Budget json.RawMessage `json:"budget"`
+}
+
 // ── Agents ────────────────────────────────────────────────────────────
 
 // Agent is an agent as reported by both APIs. SessionID is the current
 // (open) session, when one exists. StatusText is the agent's last
 // self-reported status.
+// PausedUntil is set while the agent is paused by a rate-limit hold on
+// its credential: the recorded reset time. Manual resume clears it.
 type Agent struct {
-	ID         uuid.UUID  `json:"id"`
-	ProjectID  uuid.UUID  `json:"project_id"`
-	Name       string     `json:"name"`
-	Model      *string    `json:"model,omitempty"`
-	State      string     `json:"state"`
-	StatusText *string    `json:"status_text,omitempty"`
-	Branch     string     `json:"branch"`
-	SessionID  *uuid.UUID `json:"session_id,omitempty"`
-	Running    bool       `json:"running"` // a driver is hosted for it right now
-	CreatedAt  time.Time  `json:"created_at"`
+	ID           uuid.UUID  `json:"id"`
+	ProjectID    uuid.UUID  `json:"project_id"`
+	Name         string     `json:"name"`
+	Model        *string    `json:"model,omitempty"`
+	State        string     `json:"state"`
+	StatusText   *string    `json:"status_text,omitempty"`
+	Branch       string     `json:"branch"`
+	CredentialID *uuid.UUID `json:"credential_id,omitempty"`
+	PausedUntil  *time.Time `json:"paused_until,omitempty"`
+	SessionID    *uuid.UUID `json:"session_id,omitempty"`
+	Running      bool       `json:"running"` // a driver is hosted for it right now
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
-// CreateAgentRequest creates an agent in a project. CredentialKind,
-// when non-empty, must be api_key or oauth_token and creates an
-// env-passthrough credential row for the agent (the Phase 5 stand-in;
-// real credential storage is Phase 8).
+// CreateAgentRequest creates an agent in a project. CredentialID binds
+// an existing credential. CredentialKind is the Phase 6 compat shim:
+// it resolves to the only stored credential of that kind (an error
+// when none or several exist). Budget is optional limits jsonb (see
+// CreateCredentialRequest).
 type CreateAgentRequest struct {
-	Name           string `json:"name"`
-	RolePrompt     string `json:"role_prompt,omitempty"`
-	Model          string `json:"model,omitempty"`
-	CredentialKind string `json:"credential_kind,omitempty"`
+	Name           string          `json:"name"`
+	RolePrompt     string          `json:"role_prompt,omitempty"`
+	Model          string          `json:"model,omitempty"`
+	CredentialID   *uuid.UUID      `json:"credential_id,omitempty"`
+	CredentialKind string          `json:"credential_kind,omitempty"`
+	Budget         json.RawMessage `json:"budget,omitempty"`
+}
+
+// SetAgentCredentialRequest rebinds the agent to a credential; null
+// unbinds it.
+type SetAgentCredentialRequest struct {
+	CredentialID *uuid.UUID `json:"credential_id"`
 }
 
 // RetireAgentRequest retires the agent's current session and seeds the
@@ -133,6 +192,51 @@ type AgentUsage struct {
 	LastHour  Usage     `json:"last_hour"`
 	Today     Usage     `json:"today"`
 	Total     Usage     `json:"total"`
+}
+
+// BudgetVerdict is the budget gate's current answer for an agent:
+// whether its next turn would deliver, and if not why and when to
+// expect release.
+type BudgetVerdict struct {
+	Allowed    bool       `json:"allowed"`
+	Reason     string     `json:"reason,omitempty"`
+	RetryAfter *time.Time `json:"retry_after,omitempty"`
+}
+
+// CredentialUsage is one credential's current-window usage vs limits
+// in the usage/budget status report.
+type CredentialUsage struct {
+	ID           uuid.UUID       `json:"id"`
+	Label        string          `json:"label"`
+	Kind         string          `json:"kind"`
+	Status       string          `json:"status"`
+	ExpiresAt    *time.Time      `json:"expires_at,omitempty"`
+	LimitedUntil *time.Time      `json:"limited_until,omitempty"`
+	Budget       json.RawMessage `json:"budget,omitempty"`
+	Today        Usage           `json:"today"`     // current UTC day
+	ThisHour     Usage           `json:"this_hour"` // current UTC clock hour
+}
+
+// AgentBudgetStatus is one agent's current-window usage vs limits and
+// live gate verdict in the usage/budget status report.
+type AgentBudgetStatus struct {
+	ID           uuid.UUID       `json:"id"`
+	Name         string          `json:"name"`
+	Project      string          `json:"project"`
+	State        string          `json:"state"`
+	CredentialID *uuid.UUID      `json:"credential_id,omitempty"`
+	Budget       json.RawMessage `json:"budget,omitempty"`
+	Today        Usage           `json:"today"`
+	ThisHour     Usage           `json:"this_hour"`
+	Verdict      BudgetVerdict   `json:"verdict"`
+}
+
+// UsageStatus is the usage/budget status report: current window usage
+// vs limits per credential and per agent. Windows are UTC (calendar
+// day / clock hour), computed from usage rollups.
+type UsageStatus struct {
+	Credentials []CredentialUsage   `json:"credentials"`
+	Agents      []AgentBudgetStatus `json:"agents"`
 }
 
 // ── Events ────────────────────────────────────────────────────────────
