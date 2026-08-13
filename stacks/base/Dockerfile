@@ -33,6 +33,15 @@ RUN useradd --uid 1000 --create-home --home-dir /home/agent --shell /bin/bash ag
 # classic builder the Engine API uses does not support BuildKit flags.
 COPY kbase lab-agent /usr/local/bin/
 
+# stub/ is always present in the context; it contains a `claude` binary
+# only when the builder was given a stub (the credential-free e2e
+# suite's stand-in for the real CLI). Installed if present, no-op
+# otherwise — Dockerfiles have no conditional COPY.
+COPY stub/ /tmp/claude-stub/
+RUN if [ -f /tmp/claude-stub/claude ]; then \
+        install -m 0755 /tmp/claude-stub/claude /usr/local/bin/claude; \
+    fi && rm -rf /tmp/claude-stub
+
 USER agent
 
 # Native installer: `bash -s -- <version>` passes the pinned version as

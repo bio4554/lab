@@ -33,6 +33,9 @@ func writeError(log *slog.Logger, w http.ResponseWriter, status int, err error) 
 	if errors.Is(err, store.ErrNotFound) && status == http.StatusInternalServerError {
 		status = http.StatusNotFound
 	}
+	if errors.Is(err, store.ErrDuplicateName) && status == http.StatusInternalServerError {
+		status = http.StatusConflict
+	}
 	if status == http.StatusInternalServerError {
 		// Don't leak internals to clients on unexpected errors, but do
 		// log them.

@@ -91,11 +91,16 @@ func TestSchemaCurrency(t *testing.T) {
 	if current, err := stream.Current(ctx, db); err != nil || current {
 		t.Fatalf("empty db: Current = %v, %v; want false, nil", current, err)
 	}
-	if err := stream.Up(ctx, db); err != nil {
-		t.Fatalf("Up: %v", err)
+	if applied, err := stream.Up(ctx, db); err != nil || applied != 2 {
+		t.Fatalf("Up = %d, %v; want 2 applied, nil", applied, err)
 	}
 	if current, err := stream.Current(ctx, db); err != nil || !current {
 		t.Fatalf("after Up: Current = %v, %v; want true, nil", current, err)
+	}
+	// A second Up is a no-op and must say so: cmd/migrate reports
+	// "applied N" vs "up to date" off this count.
+	if applied, err := stream.Up(ctx, db); err != nil || applied != 0 {
+		t.Fatalf("second Up = %d, %v; want 0 applied, nil", applied, err)
 	}
 	if err := stream.Down(ctx, db); err != nil {
 		t.Fatalf("Down: %v", err)
@@ -112,7 +117,7 @@ func TestStreamsAreIndependent(t *testing.T) {
 	ctx := context.Background()
 
 	for _, s := range []Stream{Lab, Kbase} {
-		if err := s.Up(ctx, db); err != nil {
+		if _, err := s.Up(ctx, db); err != nil {
 			t.Fatalf("stream %s: Up: %v", s.Name, err)
 		}
 		var exists bool

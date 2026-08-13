@@ -33,6 +33,7 @@ type Builder struct {
 
 	moduleDir         string
 	skipClaudeInstall bool
+	claudeStubPath    string
 }
 
 // BuilderOptions configures a Builder.
@@ -47,7 +48,14 @@ type BuilderOptions struct {
 	// claude.ai. It participates in the content hash, so test images
 	// never alias real ones.
 	SkipClaudeInstall bool
-	Logger            *slog.Logger
+	// ClaudeStubPath, when non-empty, is a host binary copied into the
+	// base image as /usr/local/bin/claude — a scripted stand-in for the
+	// real CLI, used by the credential-free e2e suite. It implies
+	// SkipClaudeInstall (the real install layer would shadow the stub
+	// via PATH). The stub's content hash participates in the image tag,
+	// so stub images never alias real ones.
+	ClaudeStubPath string
+	Logger         *slog.Logger
 }
 
 // NewBuilder returns a Builder that talks to rt's Docker daemon.
@@ -60,7 +68,8 @@ func NewBuilder(rt *Runtime, opts BuilderOptions) *Builder {
 		rt:                rt,
 		log:               log,
 		moduleDir:         opts.ModuleDir,
-		skipClaudeInstall: opts.SkipClaudeInstall,
+		skipClaudeInstall: opts.SkipClaudeInstall || opts.ClaudeStubPath != "",
+		claudeStubPath:    opts.ClaudeStubPath,
 	}
 }
 
@@ -89,13 +98,24 @@ func (b *Builder) EnsureImage(ctx context.Context, stack string) (string, error)
 	if b.skipClaudeInstall {
 		baseArgs["SKIP_CLAUDE_INSTALL"] = "1"
 	}
-	baseHash := contentHash(baseDockerfile, baseArgs, bins.kbaseHash, bins.labAgentHash)
-	baseTag := "lab/base:" + baseHash
-
-	if err := b.ensureBuilt(ctx, baseTag, baseDockerfile, baseArgs, map[string]string{
+	baseFiles := map[string]string{
 		"kbase":     bins.kbase,
 		"lab-agent": bins.labAgent,
-	}); err != nil {
+		"stub/":     "", // always in the context; see the base Dockerfile
+	}
+	var hashExtra []string
+	if b.claudeStubPath != "" {
+		stubHash, err := fileHash(b.claudeStubPath)
+		if err != nil {
+			return "", err
+		}
+		baseFiles["stub/claude"] = b.claudeStubPath
+		hashExtra = append(hashExtra, "claude-stub", stubHash)
+	}
+	baseHash := contentHash(baseDockerfile, baseArgs, append([]string{bins.kbaseHash, bins.labAgentHash}, hashExtra...)...)
+	baseTag := "lab/base:" + baseHash
+
+	if err := b.ensureBuilt(ctx, baseTag, baseDockerfile, baseArgs, baseFiles); err != nil {
 		return "", err
 	}
 
@@ -336,6 +356,18 @@ func tarContext(dockerfile []byte, files map[string]string) (io.Reader, error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
+		// A trailing slash with an empty host path is an (empty)
+		// directory entry.
+		if strings.HasSuffix(name, "/") && files[name] == "" {
+			if err := tw.WriteHeader(&tar.Header{
+				Name:     name,
+				Typeflag: tar.TypeDir,
+				Mode:     0o755,
+			}); err != nil {
+				return nil, fmt.Errorf("runtime: tar context: %w", err)
+			}
+			continue
+		}
 		data, err := os.ReadFile(files[name])
 		if err != nil {
 			return nil, fmt.Errorf("runtime: tar context: %w", err)

@@ -23,6 +23,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/bio4554/lab/internal/config"
+	"github.com/bio4554/lab/internal/daemon"
 	"github.com/bio4554/lab/internal/kbclient"
 	"github.com/bio4554/lab/internal/labd/api"
 	"github.com/bio4554/lab/internal/labd/budget"
@@ -133,12 +134,22 @@ func run(cfg config.Config, log *slog.Logger) error {
 			"hint", "set admin_token in lab.toml or LAB_KBASED_ADMIN_TOKEN")
 	}
 
+	builderOpts := runtime.BuilderOptions{Logger: log}
+	if cfg.Labd.ClaudeStubPath != "" {
+		// e2e test mode: agent images carry a scripted claude stand-in
+		// instead of the real CLI. Loud on purpose — never intended for
+		// real deployments.
+		log.Warn("running with a claude stub; agents are NOT real Claude Code",
+			"stub", cfg.Labd.ClaudeStubPath)
+		builderOpts.ClaudeStubPath = cfg.Labd.ClaudeStubPath
+	}
+
 	wake := claude.NewWakeHub()
 	driver := claude.New(claude.Options{
 		Store:       st,
 		Git:         git,
 		Runtime:     rt,
-		Builder:     runtime.NewBuilder(rt, runtime.BuilderOptions{}),
+		Builder:     runtime.NewBuilder(rt, builderOpts),
 		Creds:       creds.NewSource(st, vault, log),
 		Logger:      log,
 		AgentAPIURL: apiURL,
@@ -156,8 +167,20 @@ func run(cfg config.Config, log *slog.Logger) error {
 	hub := api.NewHub(pool, wake.Wake, log)
 	go hub.Run(hubCtx)
 
-	// Simple crash recovery (full reconciliation is Phase 12): restart
-	// drivers for agents that were running when the last daemon died.
+	// Crash-recovery reconciliation: before serving traffic, sweep
+	// container reality against DB state — remove containers whose
+	// agents are gone, fix stale container ids, error turns stuck
+	// running (their pump died with the old daemon), and reset working
+	// agents to idle. A failed sweep (e.g. Docker down) degrades to a
+	// warning: the daemon can still serve the API and repair on its
+	// next boot.
+	sweeper := &claude.Sweeper{St: st, Rt: rt, Log: log}
+	if err := sweeper.Sweep(ctx); err != nil {
+		log.Warn("boot reconciliation sweep incomplete", "error", err)
+	}
+
+	// Then restart drivers for agents that were active when the last
+	// daemon died; provisioning replaces their containers as usual.
 	active, err := st.ActiveAgents(ctx)
 	if err != nil {
 		return err
@@ -233,11 +256,26 @@ func run(cfg config.Config, log *slog.Logger) error {
 	}
 	names := []string{"client API", "agent API"}
 
+	// Bind both listeners up front, retrying while a draining
+	// predecessor still holds the ports (a labd restarted mid-drain
+	// used to exit immediately with "address already in use").
+	listeners := make([]net.Listener, len(servers))
+	for i, srv := range servers {
+		ln, err := daemon.Listen(ctx, srv.Addr, daemon.BindRetryWindow, log.With("api", names[i]))
+		if err != nil {
+			for _, l := range listeners[:i] {
+				l.Close()
+			}
+			return fmt.Errorf("%s: %w", names[i], err)
+		}
+		listeners[i] = ln
+	}
+
 	errCh := make(chan error, len(servers))
 	for i, srv := range servers {
 		go func() {
 			log.Info("http listening", "api", names[i], "addr", srv.Addr)
-			if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			if err := srv.Serve(listeners[i]); !errors.Is(err, http.ErrServerClosed) {
 				errCh <- fmt.Errorf("%s server: %w", names[i], err)
 				return
 			}

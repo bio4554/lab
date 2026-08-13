@@ -7,7 +7,6 @@
 //	labctl cred add -kind api_key|oauth_token -label personal [-expires RFC3339|never]   (secret on stdin)
 //	labctl cred list
 //	labctl agent create -project X -name impl1 [-role "..."] [-role-file f] [-model m] [-cred api_key|oauth_token] [-cred-id id] [-can-spawn] [-retire-tokens N]
-//	labctl agent run -project X -name impl1
 //	labctl send -project X -agent impl1 "prompt text"
 //	labctl tail -project X -agent impl1
 //	labctl retire -project X -agent impl1 [-reason "..."] -seed "..."
@@ -32,7 +31,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/bio4554/lab/internal/config"
-	"github.com/bio4554/lab/internal/labd/budget"
 	"github.com/bio4554/lab/internal/labd/claude"
 	"github.com/bio4554/lab/internal/labd/creds"
 	"github.com/bio4554/lab/internal/labd/gitrepo"
@@ -62,7 +60,7 @@ func run() error {
 		args = append([]string{args[0] + " " + args[1]}, args[2:]...)
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: labctl <project create|cred add|cred list|agent create|agent run|send|tail|retire|merge> ...")
+		return fmt.Errorf("usage: labctl <project create|cred add|cred list|agent create|send|tail|retire|merge> ...")
 	}
 	cmd, rest := args[0], args[1:]
 
@@ -92,7 +90,10 @@ func run() error {
 	case "agent create":
 		return a.agentCreate(ctx, rest)
 	case "agent run":
-		return a.agentRun(ctx, rest)
+		// Retired in Phase 12: the in-process driver lacked labd's
+		// lab-API/kbase/poke wiring, so its containers got only the
+		// credential env var — a trap. Start agents through labd.
+		return fmt.Errorf("labctl agent run was removed: start agents via labd (the TUI, or POST /v1/projects/{project}/agents/{agent}/start)")
 	case "send":
 		return a.send(ctx, rest)
 	case "tail":
@@ -332,42 +333,17 @@ func (a app) findAgent(ctx context.Context, project, name string) (store.Project
 	return store.Project{}, store.Agent{}, fmt.Errorf("agent %q not found in project %q", name, project)
 }
 
-func (a app) driver() (*claude.Driver, error) {
+// retireDriver builds the minimal driver Retire needs: the store plus
+// the container runtime (to stop the retired session's container). No
+// builder/credential/gate wiring — labctl never provisions containers;
+// that is labd's job (the old `agent run` in-process driver was retired
+// in Phase 12 for exactly that reason).
+func (a app) retireDriver() (*claude.Driver, error) {
 	rt, err := runtime.New()
 	if err != nil {
 		return nil, err
 	}
-	vault, err := creds.Open(a.cfg.DataDir)
-	if err != nil {
-		return nil, err
-	}
-	return claude.New(claude.Options{
-		Store: a.st, Git: a.git, Runtime: rt,
-		Builder:  runtime.NewBuilder(rt, runtime.BuilderOptions{}),
-		Creds:    creds.NewSource(a.st, vault, nil),
-		TurnGate: &budget.Gate{St: a.st},
-	}), nil
-}
-
-func (a app) agentRun(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("agent run", flag.ExitOnError)
-	project := fs.String("project", "", "project name")
-	name := fs.String("name", "", "agent name")
-	fs.Parse(args)
-	_, agent, err := a.findAgent(ctx, *project, *name)
-	if err != nil {
-		return err
-	}
-	d, err := a.driver()
-	if err != nil {
-		return err
-	}
-	fmt.Printf("running agent %s (%s); Ctrl-C to stop\n", agent.Name, agent.ID)
-	if err := d.Run(ctx, agent.ID); err != nil && ctx.Err() == nil {
-		return err
-	}
-	fmt.Println("stopped")
-	return nil
+	return claude.New(claude.Options{Store: a.st, Runtime: rt}), nil
 }
 
 func (a app) send(ctx context.Context, args []string) error {
@@ -486,7 +462,7 @@ func (a app) retire(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	d, err := a.driver()
+	d, err := a.retireDriver()
 	if err != nil {
 		return err
 	}

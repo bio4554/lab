@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const agentCols = "id, project_id, name, role_prompt, model, credential_id, budget, state, container_id, branch, status_text, can_spawn, retire_context_tokens, created_at"
@@ -23,10 +24,20 @@ func (s *Store) CreateAgent(ctx context.Context, a NewAgent) (Agent, error) {
 		RETURNING `+agentCols,
 		a.ProjectID, a.Name, a.RolePrompt, a.Model, a.CredentialID, budget, a.Branch, a.CanSpawn, a.RetireContextTokens)
 	agent, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Agent])
+	if isUniqueViolation(err) {
+		return Agent{}, fmt.Errorf("agent %q already exists in this project: %w", a.Name, ErrDuplicateName)
+	}
 	if err != nil {
 		return Agent{}, fmt.Errorf("create agent: %w", err)
 	}
 	return agent, nil
+}
+
+// isUniqueViolation reports whether err is a Postgres unique-constraint
+// violation (SQLSTATE 23505).
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func (s *Store) GetAgent(ctx context.Context, id uuid.UUID) (Agent, error) {
@@ -88,6 +99,19 @@ func (s *Store) ActiveAgents(ctx context.Context) ([]Agent, error) {
 	agents, err := pgx.CollectRows(rows, pgx.RowToStructByName[Agent])
 	if err != nil {
 		return nil, fmt.Errorf("active agents: %w", err)
+	}
+	return agents, nil
+}
+
+// AllAgents returns every agent across all projects, ordered by
+// creation. The boot reconciliation sweep walks this against the
+// container runtime's listing.
+func (s *Store) AllAgents(ctx context.Context) ([]Agent, error) {
+	rows, _ := s.pool.Query(ctx,
+		"SELECT "+agentCols+" FROM lab.agents ORDER BY created_at, id")
+	agents, err := pgx.CollectRows(rows, pgx.RowToStructByName[Agent])
+	if err != nil {
+		return nil, fmt.Errorf("all agents: %w", err)
 	}
 	return agents, nil
 }

@@ -55,7 +55,7 @@ func newCLIFixture(t *testing.T) *cliFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate.Lab.Up(ctx, db); err != nil {
+	if _, err := migrate.Lab.Up(ctx, db); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}

@@ -47,7 +47,7 @@ func cliFixture(t *testing.T) func(stdin string, args ...string) (string, int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate.Kbase.Up(ctx, db); err != nil {
+	if _, err := migrate.Kbase.Up(ctx, db); err != nil {
 		db.Close()
 		t.Fatal(err)
 	}

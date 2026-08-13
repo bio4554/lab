@@ -37,6 +37,13 @@ type Labd struct {
 	// AgentAPIAddr is the listen address for the agent-facing API,
 	// reachable from containers via host.docker.internal.
 	AgentAPIAddr string `toml:"agent_api_addr"`
+	// ClaudeStubPath, when set, is a host binary baked into agent
+	// images as `claude` in place of the real Claude Code CLI (the
+	// install layer is skipped). Test knob for the credential-free e2e
+	// suite; never set it in real deployments. Image tags are
+	// content-addressed over the stub, so stub images never alias real
+	// ones.
+	ClaudeStubPath string `toml:"claude_stub_path"`
 }
 
 // Kbased holds kbased-specific settings (some consumed by labd, which
@@ -113,6 +120,7 @@ func (c *Config) applyEnv() {
 	setenv(&c.LogLevel, "LAB_LOG_LEVEL")
 	setenv(&c.Labd.ClientAPIAddr, "LAB_LABD_CLIENT_API_ADDR")
 	setenv(&c.Labd.AgentAPIAddr, "LAB_LABD_AGENT_API_ADDR")
+	setenv(&c.Labd.ClaudeStubPath, "LAB_LABD_CLAUDE_STUB_PATH")
 	setenv(&c.Kbased.ListenAddr, "LAB_KBASED_LISTEN_ADDR")
 	setenv(&c.Kbased.URL, "LAB_KBASED_URL")
 	setenv(&c.Kbased.KbaseURLForAgents, "LAB_KBASED_KBASE_URL_FOR_AGENTS")

@@ -106,11 +106,17 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	})
 
+	// Bind with the bounded busy-address retry so a daemon restarted
+	// while its predecessor drains wins the port instead of exiting.
+	ln, err := Listen(ctx, opts.Addr, BindRetryWindow, log)
+	if err != nil {
+		return err
+	}
 	srv := &http.Server{Addr: opts.Addr, Handler: mux}
 	errCh := make(chan error, 1)
 	go func() {
 		log.Info("http listening", "addr", opts.Addr)
-		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 			return
 		}
