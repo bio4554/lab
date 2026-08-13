@@ -20,17 +20,28 @@ daemons (`labd`, `kbased`), N agent containers, and the `lab` TUI.
 
 ## Bootstrap from a fresh clone
 
-### 1. Start the lab daemon
+### 1. Start the daemons
 
 ```sh
 make startd        # terminal A
 ```
 
 This brings up Postgres (docker compose), applies both migration
-streams, builds `labd`, and runs it in the foreground. First-time state
-lands under `~/.lab/`: the credential-vault key (`secret.key`, created
-0600 — labd refuses to start if it's readable beyond your user) and
-project git data.
+streams, and builds and runs **both daemons** — `kbased` (the agent
+knowledge base) in the background, `labd` in the foreground; Ctrl-C
+stops both. First-time state lands under `~/.lab/`:
+
+- `secret.key` — the credential-vault key, created 0600 (labd refuses
+  to start if it's readable beyond your user);
+- `kbased.token` — the admin token the two daemons share, generated
+  0600 on first run so kbase wiring is zero-config (setting
+  `LAB_KBASED_ADMIN_TOKEN`, e.g. in `~/.lab/demo.env`, overrides it);
+- project git data.
+
+Agents automatically get a `kbase` CLI (add/recall/show versioned
+notes, decisions, architecture) with a project-scoped token minted at
+container start. If kbased is unreachable, agents still run — just
+without kbase access.
 
 ### 2. Onboard a credential (one time)
 
@@ -50,28 +61,10 @@ override with `-expires <RFC3339>|never`. Check what's stored with
 `./bin/labctl cred list` — secrets are never displayed, logged, or
 returned by any API.
 
-### 3. (Optional) Start kbased — the agent knowledge base
-
-Agents get a `kbase` CLI (add/recall/show versioned notes, decisions,
-architecture) when `kbased` is running and labd can mint tokens for it.
-Both daemons must share one admin token:
+### 3. Start the TUI and create your first agent
 
 ```sh
-# put this in ~/.lab/demo.env so startd picks it up automatically:
-#   LAB_KBASED_ADMIN_TOKEN=<output of: openssl rand -hex 32>
-
-set -a; . ~/.lab/demo.env; set +a
-./bin/kbased       # terminal B
-```
-
-Restart `make startd` after adding the variable so labd sees it too.
-Without kbased (or the token), agents still run — they just start
-without kbase access.
-
-### 4. Start the TUI and create your first agent
-
-```sh
-make startc        # terminal C
+make startc        # terminal B
 ```
 
 In the TUI:
