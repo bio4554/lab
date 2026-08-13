@@ -99,6 +99,42 @@ type Turn struct {
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
 }
 
+// ── Sessions ──────────────────────────────────────────────────────────
+
+// Session is one session in an agent's history listing. EventCount is
+// the number of events stored for it.
+type Session struct {
+	ID              uuid.UUID  `json:"id"`
+	AgentID         uuid.UUID  `json:"agent_id"`
+	ClaudeSessionID *string    `json:"claude_session_id,omitempty"`
+	StartedAt       time.Time  `json:"started_at"`
+	EndedAt         *time.Time `json:"ended_at,omitempty"`
+	EndReason       *string    `json:"end_reason,omitempty"`
+	PrevSessionID   *uuid.UUID `json:"prev_session_id,omitempty"`
+	EventCount      int64      `json:"event_count"`
+}
+
+// ── Usage ─────────────────────────────────────────────────────────────
+
+// Usage is one aggregate over usage rollup windows.
+type Usage struct {
+	TokensIn  int64   `json:"tokens_in"`
+	TokensOut int64   `json:"tokens_out"`
+	CostUSD   float64 `json:"cost_usd"`
+	Turns     int64   `json:"turns"`
+}
+
+// AgentUsage is one agent's usage aggregates: the last hour, today
+// (since local midnight, daemon clock), and all time. Buckets are by
+// rollup window start.
+type AgentUsage struct {
+	AgentID   uuid.UUID `json:"agent_id"`
+	AgentName string    `json:"agent_name"`
+	LastHour  Usage     `json:"last_hour"`
+	Today     Usage     `json:"today"`
+	Total     Usage     `json:"total"`
+}
+
 // ── Events ────────────────────────────────────────────────────────────
 
 // Event is one stored stream-json event. Payload is the raw event as

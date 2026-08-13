@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -207,5 +208,91 @@ func TestEventsBackfill(t *testing.T) {
 	}
 	if len(ours) != 2 || ours[0] != ids[3] || ours[1] != ids[4] {
 		t.Fatalf("global tail (ours) = %v, want [%d %d]", ours, ids[3], ids[4])
+	}
+}
+
+func TestSessionListAndProjectUsage(t *testing.T) {
+	srv, st, pool := newClientServer(t)
+	client := srv.Client()
+	ctx := context.Background()
+	f := createFixture(t, st, pool)
+
+	// Two chained sessions: old (ended, 2 events) → current (1 event).
+	old, err := st.CreateSession(ctx, f.Agent.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, err := st.AppendEvent(ctx, old.ID, f.Agent.ID, nil, "assistant", []byte(`{"type":"assistant"}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.EndSession(ctx, old.ID, "retired"); err != nil {
+		t.Fatal(err)
+	}
+	cur, err := st.CreateSession(ctx, f.Agent.ID, &old.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AppendEvent(ctx, cur.ID, f.Agent.ID, nil, "system", []byte(`{"type":"system"}`)); err != nil {
+		t.Fatal(err)
+	}
+
+	base := srv.URL + "/v1/projects/" + f.Project.Name + "/agents/" + f.Agent.Name
+	var sessions []wire.Session
+	doJSON(t, client, "GET", base+"/sessions", nil, &sessions, http.StatusOK, nil)
+	if len(sessions) != 2 {
+		t.Fatalf("sessions = %+v, want 2", sessions)
+	}
+	if sessions[0].ID != cur.ID || sessions[0].EventCount != 1 || sessions[0].EndedAt != nil {
+		t.Errorf("current session = %+v", sessions[0])
+	}
+	if sessions[0].PrevSessionID == nil || *sessions[0].PrevSessionID != old.ID {
+		t.Errorf("current session prev = %v, want %s", sessions[0].PrevSessionID, old.ID)
+	}
+	if sessions[1].ID != old.ID || sessions[1].EventCount != 2 ||
+		sessions[1].EndReason == nil || *sessions[1].EndReason != "retired" {
+		t.Errorf("old session = %+v", sessions[1])
+	}
+	doJSON(t, client, "GET", srv.URL+"/v1/projects/"+f.Project.Name+"/agents/nope/sessions",
+		nil, nil, http.StatusNotFound, nil)
+
+	// Usage: one recent window (hour+today+total) and one >26h old
+	// (total only, regardless of local midnight).
+	cred, err := st.CreateCredential(ctx, store.NewCredential{Kind: store.CredentialKindAPIKey, SecretEnc: []byte{}, Label: "usage test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		pool.Exec(context.Background(), "DELETE FROM lab.usage_rollups WHERE credential_id = $1", cred.ID)
+		pool.Exec(context.Background(), "DELETE FROM lab.credentials WHERE id = $1", cred.ID)
+	})
+	now := time.Now()
+	if err := st.AddUsage(ctx, cred.ID, f.Agent.ID, now.Add(-10*time.Minute),
+		store.UsageDelta{TokensIn: 100, TokensOut: 10, CostUSD: 0.5, Turns: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddUsage(ctx, cred.ID, f.Agent.ID, now.Add(-26*time.Hour),
+		store.UsageDelta{TokensIn: 1000, TokensOut: 200, CostUSD: 2, Turns: 3}); err != nil {
+		t.Fatal(err)
+	}
+
+	var usage []wire.AgentUsage
+	doJSON(t, client, "GET", srv.URL+"/v1/projects/"+f.Project.Name+"/usage", nil, &usage, http.StatusOK, nil)
+	if len(usage) != 1 {
+		t.Fatalf("usage = %+v, want 1 row", usage)
+	}
+	u := usage[0]
+	if u.AgentID != f.Agent.ID || u.AgentName != f.Agent.Name {
+		t.Errorf("usage row identity = %+v", u)
+	}
+	if u.LastHour.TokensIn != 100 || u.LastHour.Turns != 1 {
+		t.Errorf("last hour = %+v", u.LastHour)
+	}
+	if u.Today.TokensIn != 100 || u.Today.TokensOut != 10 {
+		t.Errorf("today = %+v", u.Today)
+	}
+	if u.Total.TokensIn != 1100 || u.Total.TokensOut != 210 || u.Total.Turns != 4 {
+		t.Errorf("total = %+v", u.Total)
 	}
 }
