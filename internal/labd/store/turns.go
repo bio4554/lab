@@ -11,7 +11,14 @@ import (
 
 const turnCols = "id, agent_id, session_id, source_kind, source_id, content, status, error, created_at, finished_at"
 
-// EnqueueTurn appends a turn to the agent's queue.
+// TurnsNotifyChannel is the Postgres NOTIFY channel EnqueueTurn
+// signals on. The payload is the agent_id; hosted drivers wake their
+// idle poll on it (the poll remains the fallback).
+const TurnsNotifyChannel = "lab_turns"
+
+// EnqueueTurn appends a turn to the agent's queue and NOTIFYs
+// lab_turns with the agent id. The notify is best-effort (outside the
+// insert's implicit transaction); listeners still poll.
 func (s *Store) EnqueueTurn(ctx context.Context, t NewTurn) (Turn, error) {
 	rows, _ := s.pool.Query(ctx, `
 		INSERT INTO lab.turns (agent_id, session_id, source_kind, source_id, content)
@@ -21,6 +28,10 @@ func (s *Store) EnqueueTurn(ctx context.Context, t NewTurn) (Turn, error) {
 	turn, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Turn])
 	if err != nil {
 		return Turn{}, fmt.Errorf("enqueue turn: %w", err)
+	}
+	if _, err := s.pool.Exec(ctx,
+		"SELECT pg_notify($1, $2::text)", TurnsNotifyChannel, t.AgentID); err != nil {
+		return turn, fmt.Errorf("enqueue turn: notify: %w", err)
 	}
 	return turn, nil
 }

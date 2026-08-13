@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const agentCols = "id, project_id, name, role_prompt, model, credential_id, budget, state, container_id, branch, created_at"
+const agentCols = "id, project_id, name, role_prompt, model, credential_id, budget, state, container_id, branch, status_text, created_at"
 
 func (s *Store) CreateAgent(ctx context.Context, a NewAgent) (Agent, error) {
 	budget := a.Budget
@@ -70,6 +70,34 @@ func (s *Store) SetAgentContainer(ctx context.Context, id uuid.UUID, containerID
 		"UPDATE lab.agents SET container_id = $2 WHERE id = $1", id, containerID)
 	if err != nil {
 		return fmt.Errorf("set agent container: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ActiveAgents returns every agent whose state is neither stopped nor
+// retired — agents that were running when a previous daemon died and
+// should be restarted on daemon startup.
+func (s *Store) ActiveAgents(ctx context.Context) ([]Agent, error) {
+	rows, _ := s.pool.Query(ctx,
+		"SELECT "+agentCols+" FROM lab.agents WHERE state NOT IN ($1, $2) ORDER BY created_at, id",
+		AgentStateStopped, AgentStateRetired)
+	agents, err := pgx.CollectRows(rows, pgx.RowToStructByName[Agent])
+	if err != nil {
+		return nil, fmt.Errorf("active agents: %w", err)
+	}
+	return agents, nil
+}
+
+// SetAgentStatusText records the agent's self-reported status string;
+// nil clears it.
+func (s *Store) SetAgentStatusText(ctx context.Context, id uuid.UUID, status *string) error {
+	tag, err := s.pool.Exec(ctx,
+		"UPDATE lab.agents SET status_text = $2 WHERE id = $1", id, status)
+	if err != nil {
+		return fmt.Errorf("set agent status text: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound

@@ -101,6 +101,7 @@ func createFixture(t *testing.T, s *Store) fixture {
 
 	t.Cleanup(func() {
 		for _, q := range []string{
+			"DELETE FROM lab.agent_tokens WHERE agent_id = $1",
 			"DELETE FROM lab.events WHERE agent_id = $1",
 			"DELETE FROM lab.turns WHERE agent_id = $1",
 			"DELETE FROM lab.sessions WHERE agent_id = $1",

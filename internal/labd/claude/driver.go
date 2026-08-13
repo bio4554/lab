@@ -46,6 +46,17 @@ type Options struct {
 	// Nil defaults to EnvCredentialSource.
 	Creds  CredentialSource
 	Logger *slog.Logger
+	// AgentAPIURL, when non-empty, is the labd agent API base URL as
+	// reachable from inside containers (http://host.docker.internal:
+	// <port>). It enables the lab env contract: each container create
+	// mints a fresh agent token (revoking the agent's previous ones)
+	// and injects LAB_AGENT_ID, LAB_AGENT_TOKEN, LAB_API_URL and
+	// LAB_PROJECT. Empty (labctl's in-process mode) injects none.
+	AgentAPIURL string
+	// TurnWake, when non-nil, returns a channel signalled whenever a
+	// turn is enqueued for the agent (labd wires this to LISTEN
+	// lab_turns). The idle poll remains the fallback.
+	TurnWake func(agentID uuid.UUID) <-chan struct{}
 	// PollInterval is the idle turn-queue poll cadence. Default 1s.
 	// (LISTEN wiring arrives with Phase 6.)
 	PollInterval time.Duration
@@ -70,6 +81,8 @@ type Driver struct {
 	creds CredentialSource
 	log   *slog.Logger
 
+	agentAPIURL    string
+	turnWake       func(uuid.UUID) <-chan struct{}
 	pollInterval   time.Duration
 	shutdownGrace  time.Duration
 	restartBackoff time.Duration
@@ -84,6 +97,8 @@ func New(opts Options) *Driver {
 		build:          opts.Builder,
 		creds:          opts.Creds,
 		log:            opts.Logger,
+		agentAPIURL:    opts.AgentAPIURL,
+		turnWake:       opts.TurnWake,
 		pollInterval:   opts.PollInterval,
 		shutdownGrace:  opts.ShutdownGrace,
 		restartBackoff: opts.RestartBackoff,
@@ -218,6 +233,10 @@ func (d *Driver) runProcess(ctx context.Context, project store.Project, agent st
 	if err != nil {
 		return pending, err
 	}
+	env, err = d.addLabEnv(ctx, project, agent, env)
+	if err != nil {
+		return pending, err
+	}
 
 	// Replace any existing container for this agent: with StdinOnce
 	// semantics a container we are not attached to has a dead (or
@@ -320,6 +339,33 @@ func (d *Driver) resolveEnv(ctx context.Context, agent store.Agent) (map[string]
 		return nil, err
 	}
 	return map[string]string{envVar: secret}, nil
+}
+
+// addLabEnv adds the lab API contract to the container env: a freshly
+// minted bearer token (previous tokens revoked — one live token per
+// agent, rotated on every container create) plus the agent's identity
+// and the API base URL. No-op when the driver has no AgentAPIURL
+// (labctl's in-process mode). The plaintext token goes only into the
+// env map; it is never logged or persisted.
+func (d *Driver) addLabEnv(ctx context.Context, project store.Project, agent store.Agent, env map[string]string) (map[string]string, error) {
+	if d.agentAPIURL == "" {
+		return env, nil
+	}
+	if _, err := d.st.RevokeAgentTokens(ctx, agent.ID); err != nil {
+		return nil, err
+	}
+	_, secret, err := d.st.MintAgentToken(ctx, agent.ID)
+	if err != nil {
+		return nil, err
+	}
+	if env == nil {
+		env = make(map[string]string, 4)
+	}
+	env["LAB_AGENT_ID"] = agent.ID.String()
+	env["LAB_AGENT_TOKEN"] = secret
+	env["LAB_API_URL"] = d.agentAPIURL
+	env["LAB_PROJECT"] = project.Name
+	return env, nil
 }
 
 // setStopped best-effort marks the agent stopped on driver exit.

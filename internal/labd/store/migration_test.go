@@ -61,7 +61,7 @@ func TestLabMigrationRoundTrip(t *testing.T) {
 	cleanup()
 	t.Cleanup(cleanup)
 
-	tables := []string{"projects", "credentials", "agents", "sessions", "turns", "events", "usage_rollups"}
+	tables := []string{"projects", "credentials", "agents", "sessions", "turns", "events", "usage_rollups", "agent_tokens"}
 	tableExists := func(name string) bool {
 		var exists bool
 		err := db.QueryRowContext(ctx,
@@ -82,9 +82,19 @@ func TestLabMigrationRoundTrip(t *testing.T) {
 		}
 	}
 
-	// Down rolls back the latest migration (00002, the phase-1 tables).
+	// Down once rolls back 00003 (agent_tokens); once more rolls back
+	// 00002 (the phase-1 tables).
 	if err := stream.Down(ctx, db); err != nil {
 		t.Fatalf("Down: %v", err)
+	}
+	if tableExists("agent_tokens") {
+		t.Fatalf("after Down: table %s.agent_tokens still present", schema)
+	}
+	if !tableExists("agents") {
+		t.Fatalf("after Down of 00003: table %s.agents missing", schema)
+	}
+	if err := stream.Down(ctx, db); err != nil {
+		t.Fatalf("Down (again): %v", err)
 	}
 	for _, tbl := range tables {
 		if tableExists(tbl) {
