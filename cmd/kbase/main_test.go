@@ -20,10 +20,13 @@ import (
 	"github.com/bio4554/lab/internal/migrate"
 )
 
-// TestRoundTrip drives the CLI end to end against a live kbased
-// (httptest server + real Postgres; skips when the database is
-// unreachable): add → show → update → show --history → recall → list.
-func TestRoundTrip(t *testing.T) {
+// cliFixture stands up a live kbased (httptest server + real
+// Postgres; skips when the database is unreachable), provisions an
+// agent principal + project token the way labd does, points
+// KBASE_URL/KBASE_TOKEN at it, and returns a runner for one CLI
+// invocation. Everything the test writes is cleaned up.
+func cliFixture(t *testing.T) func(stdin string, args ...string) (string, int) {
+	t.Helper()
 	ctx := context.Background()
 	dsn := os.Getenv("LAB_TEST_DSN")
 	if dsn == "" {
@@ -78,6 +81,11 @@ func TestRoundTrip(t *testing.T) {
 		}
 		defer tx.Rollback(ctx)
 		for _, q := range []string{
+			"ALTER TABLE kbase.edges DISABLE TRIGGER edges_tombstone_only",
+			"DELETE FROM kbase.edges WHERE created_by = $1",
+			"ALTER TABLE kbase.edges ENABLE TRIGGER edges_tombstone_only",
+			`DELETE FROM kbase.tickets
+			 WHERE entry_id IN (SELECT id FROM kbase.entries WHERE created_by = $1)`,
 			"ALTER TABLE kbase.entry_versions DISABLE TRIGGER entry_versions_append_only",
 			"DELETE FROM kbase.entry_versions WHERE author = $1",
 			"ALTER TABLE kbase.entry_versions ENABLE TRIGGER entry_versions_append_only",
@@ -106,7 +114,7 @@ func TestRoundTrip(t *testing.T) {
 
 	// kbase reads content from stdin (the agent workflow: pipe or
 	// heredoc) and everything else from flags.
-	kb := func(stdin string, args ...string) (string, int) {
+	return func(stdin string, args ...string) (string, int) {
 		t.Helper()
 		var out, errOut bytes.Buffer
 		code := run(args, strings.NewReader(stdin), &out, &errOut)
@@ -115,6 +123,12 @@ func TestRoundTrip(t *testing.T) {
 		}
 		return out.String(), code
 	}
+}
+
+// TestRoundTrip drives the CLI end to end: add → show → update → show
+// --history → recall → list.
+func TestRoundTrip(t *testing.T) {
+	kb := cliFixture(t)
 
 	out, code := kb("Chosen for FTS and the shared instance.",
 		"add", "decision", "--title", "Use Postgres")
@@ -159,6 +173,110 @@ func TestRoundTrip(t *testing.T) {
 	}
 	if _, code := kb("body", "add", "decision", "--title", "Sneaky global", "--global"); code != 1 {
 		t.Fatalf("project token adding --global: exit %d, want 1", code)
+	}
+}
+
+// TestGraphAndTicketRoundTrip drives the Phase 10 surface end to end:
+// component add ×2 → link → graph in all three formats → unlink →
+// graph reflects it; then a full ticket lifecycle with a failed second
+// claim (one CAS attempt, exit 1, current state printed).
+func TestGraphAndTicketRoundTrip(t *testing.T) {
+	kb := cliFixture(t)
+
+	// component add is a one-liner: without -m the title doubles as
+	// the body, and no stdin read happens.
+	out, code := kb("", "component", "add", "--title", "API Server")
+	if code != 0 || !strings.Contains(out, "created api-server v1 (component") {
+		t.Fatalf("component add: code %d, out %q", code, out)
+	}
+	if out, code = kb("", "component", "add", "--title", "Postgres DB"); code != 0 {
+		t.Fatalf("component add 2: code %d, out %q", code, out)
+	}
+
+	out, code = kb("", "component", "link", "api-server", "postgres-db", "--label", "stores state in")
+	if code != 0 || !strings.Contains(out, "linked api-server -> postgres-db [stores state in]") {
+		t.Fatalf("link: code %d, out %q", code, out)
+	}
+
+	out, code = kb("", "graph")
+	if code != 0 || !strings.Contains(out, "api-server (API Server)") ||
+		!strings.Contains(out, "  -> postgres-db [stores state in]") {
+		t.Fatalf("graph text: code %d, out %q", code, out)
+	}
+
+	out, code = kb("", "graph", "--format", "dot")
+	if code != 0 || !strings.HasPrefix(out, "digraph kbase {\n") ||
+		!strings.Contains(out, `"api-server" -> "postgres-db" [label="stores state in"];`) ||
+		!strings.HasSuffix(strings.TrimSpace(out), "}") {
+		t.Fatalf("graph dot: code %d, out %q", code, out)
+	}
+
+	out, code = kb("", "graph", "--format", "mermaid")
+	if code != 0 || !strings.HasPrefix(out, "graph LR\n") ||
+		!strings.Contains(out, "n_api_server[\"api-server\"]") ||
+		!strings.Contains(out, "n_api_server -->|stores state in| n_postgres_db") {
+		t.Fatalf("graph mermaid: code %d, out %q", code, out)
+	}
+
+	out, code = kb("", "component", "unlink", "api-server", "postgres-db")
+	if code != 0 || !strings.Contains(out, "unlinked api-server -> postgres-db") {
+		t.Fatalf("unlink: code %d, out %q", code, out)
+	}
+	if out, code = kb("", "graph"); code != 0 || strings.Contains(out, "->") {
+		t.Fatalf("graph after unlink: code %d, out %q", code, out)
+	}
+
+	// Tickets: add ticket creates entry + claimable row in one call.
+	out, code = kb("Investigate the flaky suite.", "add", "ticket", "--title", "Fix the build")
+	if code != 0 || !strings.Contains(out, "created ticket fix-the-build (open, cas 0)") {
+		t.Fatalf("add ticket: code %d, out %q", code, out)
+	}
+	if out, code = kb("", "ticket", "list", "--status", "open"); code != 0 ||
+		!strings.Contains(out, "fix-the-build") {
+		t.Fatalf("ticket list: code %d, out %q", code, out)
+	}
+
+	out, code = kb("", "ticket", "claim", "fix-the-build")
+	if code != 0 || !strings.Contains(out, "claim: fix-the-build is now claimed (cas 1)") {
+		t.Fatalf("claim: code %d, out %q", code, out)
+	}
+	// Second claim: exactly one CAS attempt, exit 1, current state
+	// printed for the losing script.
+	out, code = kb("", "ticket", "claim", "fix-the-build")
+	if code != 1 || !strings.Contains(out, "claim failed — current state:") ||
+		!strings.Contains(out, "status: claimed") {
+		t.Fatalf("second claim: code %d, out %q", code, out)
+	}
+
+	if out, code = kb("", "ticket", "start", "fix-the-build"); code != 0 ||
+		!strings.Contains(out, "is now in_progress") {
+		t.Fatalf("start: code %d, out %q", code, out)
+	}
+	if out, code = kb("", "ticket", "comment", "fix-the-build", "-m", "Halfway there."); code != 0 {
+		t.Fatalf("comment: code %d, out %q", code, out)
+	}
+	if out, code = kb("", "ticket", "done", "fix-the-build"); code != 0 ||
+		!strings.Contains(out, "is now done") {
+		t.Fatalf("done: code %d, out %q", code, out)
+	}
+
+	// The narrative lives in the entry chain: kbase show --history
+	// shows every step with the acting principal.
+	out, code = kb("", "show", "fix-the-build", "--history")
+	if code != 0 ||
+		!strings.Contains(out, "Investigate the flaky suite.") ||
+		!strings.Contains(out, "_claimed by agent:cli-test-agent — ") ||
+		!strings.Contains(out, "_started by agent:cli-test-agent — ") ||
+		!strings.Contains(out, "_comment by agent:cli-test-agent — ") ||
+		!strings.Contains(out, "Halfway there.") ||
+		!strings.Contains(out, "_completed by agent:cli-test-agent — ") ||
+		!strings.Contains(out, "v5") {
+		t.Fatalf("show --history: code %d, out %q", code, out)
+	}
+
+	out, code = kb("", "ticket", "show", "fix-the-build")
+	if code != 0 || !strings.Contains(out, "status: done") {
+		t.Fatalf("ticket show: code %d, out %q", code, out)
 	}
 }
 

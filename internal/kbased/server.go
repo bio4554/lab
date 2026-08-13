@@ -48,6 +48,17 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("GET /v1/entries/{slug}", s.getEntry)
 	api.HandleFunc("POST /v1/entries/{slug}/versions", s.appendVersion)
 	api.HandleFunc("GET /v1/recall", s.recall)
+	api.HandleFunc("POST /v1/edges", s.createEdge)
+	api.HandleFunc("DELETE /v1/edges/{id}", s.tombstoneEdge)
+	api.HandleFunc("GET /v1/graph", s.graph)
+	api.HandleFunc("POST /v1/tickets", s.createTicket)
+	api.HandleFunc("GET /v1/tickets", s.listTickets)
+	api.HandleFunc("GET /v1/tickets/{ref}", s.getTicket)
+	api.HandleFunc("POST /v1/tickets/{ref}/claim", s.transitionTicket("claim"))
+	api.HandleFunc("POST /v1/tickets/{ref}/start", s.transitionTicket("start"))
+	api.HandleFunc("POST /v1/tickets/{ref}/done", s.transitionTicket("done"))
+	api.HandleFunc("POST /v1/tickets/{ref}/abandon", s.transitionTicket("abandon"))
+	api.HandleFunc("POST /v1/tickets/{ref}/comment", s.commentTicket)
 
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", s.authenticate(api))
@@ -92,6 +103,14 @@ func (s *Server) createEntry(w http.ResponseWriter, r *http.Request) {
 	if !ValidType(req.Type) {
 		s.writeError(w, http.StatusBadRequest,
 			fmt.Errorf("unknown type %q (valid: %s)", req.Type, strings.Join(EntryTypes, ", ")))
+		return
+	}
+	// Ticket entries are 1:1 with a tickets row; creating one without
+	// the row would leave an unclaimable orphan. POST /v1/tickets makes
+	// both in one transaction.
+	if req.Type == "ticket" {
+		s.writeError(w, http.StatusBadRequest,
+			errors.New("ticket entries are created via POST /v1/tickets"))
 		return
 	}
 	if req.Title == "" {
@@ -369,13 +388,24 @@ func (s *Server) writeError(w http.ResponseWriter, status int, err error) {
 	s.writeJSON(w, status, kbclient.Error{Error: err.Error()})
 }
 
-// writeStoreError maps store sentinels to statuses.
+// writeStoreError maps store sentinels to statuses. Ticket conflicts
+// (CAS/permission) are a 409 whose body carries the ticket's current
+// state so callers can re-inspect and retry without a second GET.
 func (s *Server) writeStoreError(w http.ResponseWriter, err error) {
+	var conflict *TicketConflictError
 	switch {
+	case errors.As(err, &conflict):
+		s.writeJSON(w, http.StatusConflict, struct {
+			Error  string          `json:"error"`
+			Ticket kbclient.Ticket `json:"ticket"`
+		}{Error: conflict.Error(), Ticket: conflict.Ticket})
 	case errors.Is(err, ErrNotFound):
 		s.writeError(w, http.StatusNotFound, err)
-	case errors.Is(err, ErrSlugTaken), errors.Is(err, ErrAmbiguousSlug):
+	case errors.Is(err, ErrSlugTaken), errors.Is(err, ErrAmbiguousSlug),
+		errors.Is(err, ErrEdgeExists), errors.Is(err, ErrEdgeTombstoned):
 		s.writeError(w, http.StatusConflict, err)
+	case errors.Is(err, ErrNotComponent):
+		s.writeError(w, http.StatusBadRequest, err)
 	case errors.Is(err, errForbiddenProject):
 		s.writeError(w, http.StatusForbidden, err)
 	default:

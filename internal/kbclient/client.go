@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -39,9 +40,13 @@ func New(addr, token string) *Client {
 }
 
 // APIError is a non-2xx response, carrying the kbased error message.
+// Ticket CAS/permission conflicts (409) also carry the ticket's
+// current state so callers can re-inspect and retry without a second
+// GET.
 type APIError struct {
 	Status  int
 	Message string
+	Ticket  *Ticket
 }
 
 func (e *APIError) Error() string {
@@ -81,12 +86,15 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		var apiErr Error
+		var apiErr struct {
+			Error  string  `json:"error"`
+			Ticket *Ticket `json:"ticket"`
+		}
 		msg := resp.Status
 		if json.NewDecoder(resp.Body).Decode(&apiErr) == nil && apiErr.Error != "" {
 			msg = apiErr.Error
 		}
-		return &APIError{Status: resp.StatusCode, Message: msg}
+		return &APIError{Status: resp.StatusCode, Message: msg, Ticket: apiErr.Ticket}
 	}
 	if out == nil {
 		return nil
@@ -175,6 +183,115 @@ func (c *Client) Recall(ctx context.Context, query, typ string, n int) ([]Recall
 	var out []RecallHit
 	err := c.do(ctx, http.MethodGet, "/v1/recall?"+q.Encode(), nil, &out)
 	return out, err
+}
+
+// ── Graph API ────────────────────────────────────────────────────────
+
+// CreateEdge links two components with a labeled directed edge.
+func (c *Client) CreateEdge(ctx context.Context, req CreateEdgeRequest) (Edge, error) {
+	var e Edge
+	err := c.do(ctx, http.MethodPost, "/v1/edges", req, &e)
+	return e, err
+}
+
+// TombstoneEdge removes an edge by tombstoning it (the row survives so
+// past topologies stay reconstructible). A second tombstone is a 409.
+func (c *Client) TombstoneEdge(ctx context.Context, id uuid.UUID) (Edge, error) {
+	var e Edge
+	err := c.do(ctx, http.MethodDelete, "/v1/edges/"+id.String(), nil, &e)
+	return e, err
+}
+
+// Graph fetches the component graph: nodes visible to the token plus
+// the edges live at the given time (zero at = now).
+func (c *Client) Graph(ctx context.Context, at time.Time) (Graph, error) {
+	path := "/v1/graph"
+	if !at.IsZero() {
+		path += "?at=" + url.QueryEscape(at.Format(time.RFC3339Nano))
+	}
+	var g Graph
+	err := c.do(ctx, http.MethodGet, path, nil, &g)
+	return g, err
+}
+
+// ── Ticket API ───────────────────────────────────────────────────────
+
+// CreateTicket creates the backing entry (type ticket) and the ticket
+// row in one transaction.
+func (c *Client) CreateTicket(ctx context.Context, req CreateTicketRequest) (Ticket, error) {
+	var t Ticket
+	err := c.do(ctx, http.MethodPost, "/v1/tickets", req, &t)
+	return t, err
+}
+
+// ListTickets lists tickets in the token's scope, newest first. status
+// empty = all statuses; limit 0 = server default.
+func (c *Client) ListTickets(ctx context.Context, status string, limit int) ([]Ticket, error) {
+	q := url.Values{}
+	if status != "" {
+		q.Set("status", status)
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	path := "/v1/tickets"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	var out []Ticket
+	err := c.do(ctx, http.MethodGet, path, nil, &out)
+	return out, err
+}
+
+// GetTicket fetches one ticket (with its backing entry's current
+// version) by ticket id or entry slug.
+func (c *Client) GetTicket(ctx context.Context, ref string) (Ticket, error) {
+	var t Ticket
+	err := c.do(ctx, http.MethodGet, "/v1/tickets/"+url.PathEscape(ref), nil, &t)
+	return t, err
+}
+
+// transitionTicket posts one CAS transition. Conflicts come back as an
+// *APIError with Status 409 and the ticket's current state attached.
+func (c *Client) transitionTicket(ctx context.Context, ref, action string, casVersion int) (Ticket, error) {
+	var t Ticket
+	err := c.do(ctx, http.MethodPost,
+		"/v1/tickets/"+url.PathEscape(ref)+"/"+action,
+		TicketTransitionRequest{CASVersion: casVersion}, &t)
+	return t, err
+}
+
+// ClaimTicket atomically claims an open or abandoned ticket. Exactly
+// one concurrent claimer wins; losers get a 409 with current state.
+func (c *Client) ClaimTicket(ctx context.Context, ref string, casVersion int) (Ticket, error) {
+	return c.transitionTicket(ctx, ref, "claim", casVersion)
+}
+
+// StartTicket moves a claimed ticket to in_progress (claimant only).
+func (c *Client) StartTicket(ctx context.Context, ref string, casVersion int) (Ticket, error) {
+	return c.transitionTicket(ctx, ref, "start", casVersion)
+}
+
+// DoneTicket moves a claimed/in_progress ticket to done (claimant
+// only).
+func (c *Client) DoneTicket(ctx context.Context, ref string, casVersion int) (Ticket, error) {
+	return c.transitionTicket(ctx, ref, "done", casVersion)
+}
+
+// AbandonTicket moves a claimed/in_progress ticket to abandoned and
+// clears the claimant, making it claimable again (claimant only).
+func (c *Client) AbandonTicket(ctx context.Context, ref string, casVersion int) (Ticket, error) {
+	return c.transitionTicket(ctx, ref, "abandon", casVersion)
+}
+
+// CommentTicket appends a comment version to the ticket's entry. It
+// does not touch status and needs no CAS version.
+func (c *Client) CommentTicket(ctx context.Context, ref, text string) (Ticket, error) {
+	var t Ticket
+	err := c.do(ctx, http.MethodPost,
+		"/v1/tickets/"+url.PathEscape(ref)+"/comment",
+		CommentTicketRequest{Text: text}, &t)
+	return t, err
 }
 
 // ── Admin API (Token must be the configured admin token) ────────────
