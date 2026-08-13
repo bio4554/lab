@@ -96,6 +96,97 @@ type AppendVersionRequest struct {
 	ProjectID *uuid.UUID `json:"project_id,omitempty"`
 }
 
+// ── Graph API ────────────────────────────────────────────────────────
+
+// Edge is one directed edge between two component entries, identified
+// to clients by the endpoint slugs. Removal is a tombstone, never a
+// delete, so past topologies stay reconstructible.
+type Edge struct {
+	ID        uuid.UUID  `json:"id"`
+	ProjectID *uuid.UUID `json:"project_id,omitempty"` // nil = global scope
+	From      string     `json:"from"`                 // from-entry slug
+	To        string     `json:"to"`                   // to-entry slug
+	Label     string     `json:"label"`
+	CreatedBy Author     `json:"created_by"`
+	CreatedAt time.Time  `json:"created_at"`
+	// Tombstone provenance, present once the edge has been removed.
+	TombstonedBy *Author    `json:"tombstoned_by,omitempty"`
+	TombstonedAt *time.Time `json:"tombstoned_at,omitempty"`
+}
+
+// CreateEdgeRequest is the body of POST /v1/edges. From/To are
+// component slugs resolved in the edge's scope (the writer's project,
+// or global for scope-less tokens unless ProjectID targets a project).
+type CreateEdgeRequest struct {
+	From  string `json:"from"`
+	To    string `json:"to"`
+	Label string `json:"label"`
+	// ProjectID targets a specific project's scope. Only honored for
+	// scope-less tokens; project tokens are pinned to their project.
+	ProjectID *uuid.UUID `json:"project_id,omitempty"`
+}
+
+// GraphNode is one component entry in a graph response.
+type GraphNode struct {
+	Slug      string     `json:"slug"`
+	Title     string     `json:"title"` // current version's title
+	ProjectID *uuid.UUID `json:"project_id,omitempty"`
+}
+
+// Graph is the body of GET /v1/graph: the component entries visible to
+// the caller plus the edges live at the requested time.
+type Graph struct {
+	At    time.Time   `json:"at"`
+	Nodes []GraphNode `json:"nodes"`
+	Edges []Edge      `json:"edges"`
+}
+
+// ── Ticket API ───────────────────────────────────────────────────────
+
+// Ticket is the coordination state of one ticket: the only in-place
+// mutable rows in kbase, guarded by compare-and-swap on CASVersion.
+// The narrative (body, comments, status history) lives in the backing
+// entry's version chain.
+type Ticket struct {
+	ID         uuid.UUID  `json:"id"`
+	ProjectID  *uuid.UUID `json:"project_id,omitempty"` // nil = global scope
+	EntryID    uuid.UUID  `json:"entry_id"`
+	Slug       string     `json:"slug"`
+	Title      string     `json:"title"` // current version's title
+	Status     string     `json:"status"`
+	ClaimedBy  *Author    `json:"claimed_by,omitempty"`
+	CASVersion int        `json:"cas_version"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	// Entry is the backing entry at its current version, present only
+	// on single-ticket responses.
+	Entry *Entry `json:"entry,omitempty"`
+}
+
+// CreateTicketRequest is the body of POST /v1/tickets: it creates the
+// backing entry (type ticket, version 1 = Body) and the ticket row in
+// one transaction. Slug is generated from the title when empty.
+type CreateTicketRequest struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Slug  string `json:"slug,omitempty"`
+	// ProjectID targets a specific project's scope. Only honored for
+	// scope-less tokens; project tokens are pinned to their project.
+	ProjectID *uuid.UUID `json:"project_id,omitempty"`
+}
+
+// TicketTransitionRequest is the body of the claim/start/done/abandon
+// endpoints: the caller's expected cas_version. A stale version (or a
+// transition by a non-claimant) is a 409 carrying the current state.
+type TicketTransitionRequest struct {
+	CASVersion int `json:"cas_version"`
+}
+
+// CommentTicketRequest is the body of POST /v1/tickets/{id}/comment.
+type CommentTicketRequest struct {
+	Text string `json:"text"`
+}
+
 // ── Admin API (labd-facing) ──────────────────────────────────────────
 
 // RegisterPrincipalRequest is the body of POST /admin/v1/principals.

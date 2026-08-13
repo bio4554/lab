@@ -109,6 +109,14 @@ func (f *fixture) cleanup(t *testing.T) {
 	}
 	defer tx.Rollback(ctx)
 	stmts := []string{
+		"ALTER TABLE kbase.edges DISABLE TRIGGER edges_tombstone_only",
+		`DELETE FROM kbase.edges
+		 WHERE created_by = ANY($1)
+		    OR from_entry IN (SELECT id FROM kbase.entries WHERE created_by = ANY($1))
+		    OR to_entry IN (SELECT id FROM kbase.entries WHERE created_by = ANY($1))`,
+		"ALTER TABLE kbase.edges ENABLE TRIGGER edges_tombstone_only",
+		`DELETE FROM kbase.tickets
+		 WHERE entry_id IN (SELECT id FROM kbase.entries WHERE created_by = ANY($1))`,
 		"ALTER TABLE kbase.entry_versions DISABLE TRIGGER entry_versions_append_only",
 		`DELETE FROM kbase.entry_versions
 		 WHERE author = ANY($1)

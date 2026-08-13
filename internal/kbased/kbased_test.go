@@ -269,9 +269,19 @@ func TestRecall(t *testing.T) {
 		{"decision", "Goose for migrations", "Two independent goose streams with schema-qualified version tables."},
 	}
 	for _, s := range seed {
-		if _, err := c.CreateEntry(ctx, kbclient.CreateEntryRequest{
-			Type: s.typ, Title: s.title, Content: s.content,
-		}); err != nil {
+		var err error
+		if s.typ == "ticket" {
+			// Ticket entries only exist via the ticket API (Phase 10);
+			// recall still sees them like any other entry.
+			_, err = c.CreateTicket(ctx, kbclient.CreateTicketRequest{
+				Title: s.title, Body: s.content,
+			})
+		} else {
+			_, err = c.CreateEntry(ctx, kbclient.CreateEntryRequest{
+				Type: s.typ, Title: s.title, Content: s.content,
+			})
+		}
+		if err != nil {
 			t.Fatalf("seed %q: %v", s.title, err)
 		}
 	}

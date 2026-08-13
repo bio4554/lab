@@ -32,10 +32,19 @@ Usage:
   kbase show <slug> [--version <n>] [--history]
   kbase list [--type <t>] [--limit <n>]
   kbase recall "<query>" [--type <t>] [-n <count>]
+  kbase graph [--format text|dot|mermaid] [--at <RFC3339>]
+  kbase component add --title <t> [--slug <s>] [-m <body> | -]
+  kbase component link <from> <to> --label <l>
+  kbase component unlink <edge-id> | <from> <to> [--label <l>]
+  kbase ticket list [--status <s>] [--limit <n>]
+  kbase ticket show <id|slug>
+  kbase ticket claim|start|done|abandon <id|slug>
+  kbase ticket comment <id|slug> -m "<text>"
   kbase version
 
 Types: decision, note, architecture, component, ticket.
 Content comes from -m or stdin (a trailing "-" forces stdin).
+"add ticket" creates a real ticket (entry + claimable ticket row).
 
 Connection: KBASE_URL + KBASE_TOKEN env vars; -url/-token override.
 `
@@ -73,6 +82,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		err = cmdList(ctx, rest, stdout)
 	case "recall":
 		err = cmdRecall(ctx, rest, stdout)
+	case "graph":
+		err = cmdGraph(ctx, rest, stdout)
+	case "component":
+		err = cmdComponent(ctx, rest, stdin, stdout)
+	case "ticket":
+		err = cmdTicket(ctx, rest, stdout)
 	default:
 		fmt.Fprintf(stderr, "kbase: unknown command %q\n\n%s", cmd, usage)
 		return 2
@@ -189,6 +204,25 @@ func cmdAdd(ctx context.Context, args []string, stdin io.Reader, stdout io.Write
 	c, err := client(*urlFlag, *tokenFlag)
 	if err != nil {
 		return err
+	}
+	// Ticket entries are 1:1 with a claimable ticket row, so "add
+	// ticket" goes through the ticket API (which creates both in one
+	// transaction); kbased rejects bare ticket entries.
+	if pos[0] == "ticket" {
+		if *global {
+			return usageError("tickets have no --global flag (scope-less tokens default to global)")
+		}
+		ticket, err := c.CreateTicket(ctx, kbclient.CreateTicketRequest{
+			Title: *title,
+			Body:  body,
+			Slug:  *slug,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "created ticket %s (%s, cas %d)\n",
+			ticket.Slug, ticket.Status, ticket.CASVersion)
+		return nil
 	}
 	entry, err := c.CreateEntry(ctx, kbclient.CreateEntryRequest{
 		Type:    pos[0],
