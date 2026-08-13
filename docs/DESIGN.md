@@ -292,9 +292,19 @@ Everything is **versioned, append-only, with provenance**. Two-table core
 - **Components** are entries of type `component` (versioned like everything
   else).
 - **Directed edges** between components: `edges(id, project_id,
-  from_entry, to_entry, label, created_by_token, created_at,
-  tombstoned_by_token, tombstoned_at)` — append-only; removal is a
-  tombstone, so the graph at any time T is reconstructible.
+  from_entry, to_entry, label, created_by → principals, created_at,
+  tombstoned_by → principals, tombstoned_at)` — append-only; removal is
+  a tombstone, so the graph at any time T is reconstructible
+  (live-at-T = `created_at <= T AND (tombstoned_at IS NULL OR
+  tombstoned_at > T)`; `GET /v1/graph?at=` also filters components by
+  `created_at`). As built (Phase 10): provenance uses principal FKs
+  like the rest of kbase, not the token FKs of the original sketch; a
+  trigger permits exactly one UPDATE per row — the first tombstone —
+  and rejects DELETE and everything else; partial unique indexes (one
+  per scope, NULL project its own scope) allow at most one *live* edge
+  per (scope, from, to, label) while permitting recreation after
+  tombstoning. Endpoints must be component entries readable in the
+  edge's scope; edges follow entry scope rules for reads and writes.
 - `kbase graph` renders the current graph (text/DOT/mermaid) for agents;
   the TUI can render it for humans.
 
@@ -303,15 +313,34 @@ Everything is **versioned, append-only, with provenance**. Two-table core
 Simple ticket system so impl agents can take work without stepping on each
 other:
 
-- `tickets(id, project_id, entry_id, status open|claimed|in_progress|done|
-  abandoned, claimed_by, cas_version int)`
+- `tickets(id, project_id, entry_id unique → entries, status
+  open|claimed|in_progress|done|abandoned, claimed_by → principals,
+  cas_version int, created_at, updated_at)` — 1:1 with an entry of type
+  `ticket`; bare ticket entries are rejected by `POST /v1/entries`
+  (`POST /v1/tickets` creates entry + row in one transaction, and
+  `kbase add ticket` routes through it).
 - Claiming is one atomic statement:
   `UPDATE tickets SET claimed_by=$agent, status='claimed',
   cas_version=cas_version+1 WHERE id=$id AND cas_version=$expected AND
   claimed_by IS NULL` — zero rows updated ⇒ lost the race, re-list and
-  retry.
+  retry. The `claimed_by IS NULL` predicate makes claim valid from
+  `open` and `abandoned` (abandon clears the claimant, so abandoned
+  tickets are reclaimable; done keeps its claimant and is terminal).
+  `start`/`done`/`abandon` additionally require the caller to be the
+  claimant; every transition bumps `cas_version`, and a lost CAS (or
+  non-claimant attempt) is a 409 carrying the ticket's current state.
+  The CLI makes exactly one CAS attempt per invocation — no internal
+  retry — so concurrent scripted claimers behave predictably.
 - Ticket body/comments/status history live in the entry's version chain, so
-  tickets get the same provenance as everything else.
+  tickets get the same provenance as everything else. As built: every
+  transition/comment appends a version (in the same transaction as the
+  CAS) whose content is the prior content plus a stable trailer
+  `\n\n---\n_<verb> by <kind>:<name> — <RFC3339-UTC>_` (verbs
+  claimed/started/completed/abandoned/comment; comment text follows on
+  the next line). Ticket endpoints accept ticket id or entry slug;
+  mutations follow entry write-scope rules (project tokens mutate only
+  their own project's tickets), while comments need no CAS but still
+  bump `updated_at`.
 
 ### Recall
 

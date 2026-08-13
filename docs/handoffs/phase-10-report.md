@@ -148,3 +148,48 @@ export KBASE_URL=http://127.0.0.1:7720 KBASE_TOKEN=<human-token>
 - Behavior change worth knowing: `kbase add ticket` used to create a
   bare entry (Phase 9 stored it inertly); it now creates a real
   claimable ticket, and bare ticket entries are refused by the API.
+
+---
+
+## Orchestrator review — closed (2026-08-13)
+
+Reviewed against the phase-10 handoff acceptance criteria. **Zero
+bounces.** Merged to `development` as 9bb08f8.
+
+**Code review**: full 15-file diff read (+2437/−12). Migration 00003
+trigger checks every column (nullable ones via `IS DISTINCT FROM`) and
+the CHECK ties `tombstoned_by`/`tombstoned_at` together; ticket
+transitions hold the tickets-row lock inside the CAS transaction, so
+version appends serialize without the AppendVersion retry loop;
+comments take the same lock via their `updated_at` bump. Claim's
+`claimed_by IS NULL` predicate correctly encodes open|abandoned (done
+keeps its claimant, so finished tickets are not reclaimable). All nine
+recorded decisions accepted — notably the bare-ticket-entry rejection
+(hard 1:1 invariant) and reclaimable-abandoned semantics.
+
+**Checks**: `make check` green on the branch and post-merge;
+`internal/kbased` + `cmd/kbase` pass `-race -count=1` twice; migration
+00003 down/up round-trips against live Postgres (tables + trigger
+verified present after re-up). Secret scan of the diff: clean.
+
+**Live demo re-run** (both daemons from the branch build, real agent
+container): container env contract intact — exactly one credential var
++ KBASE_URL/KBASE_TOKEN + LAB_*. In-container: component add ×2 →
+link → graph in all three formats (mermaid output is valid `graph LR`)
+→ unlink → `--at` before the tombstone restores the old topology.
+Full in-container ticket lifecycle (add ticket → list → claim → start
+→ comment → done) with `agent:rev10` provenance on all five versions;
+host-side human comment appended v6 (`human:Charles`) — both authors
+in history. Direct SQL UPDATE and DELETE on edges rejected by the
+trigger; second tombstone via API → 409, exit 1. Concurrent host-side
+claim race: exactly one winner (cas 1), loser printed current state
+and exited 1 with no retry. Logs: zero token material in either
+daemon's output; all stored kbase tokens are 32-byte hashes. Clean
+SIGTERM shutdown of both daemons. The predicted one-time agent-image
+rebuild happened on first start.
+
+**Review note (not a phase defect)**: `labctl agent run` runs its own
+in-process driver, which lacks labd's lab-API and kbase wiring — a
+container started that way gets only the credential env var. Agents
+must be started through labd (TUI or client API) to receive the full
+env contract. Filed to the Phase 12 backlog.
