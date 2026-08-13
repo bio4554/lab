@@ -86,6 +86,39 @@ func (s *Store) NextQueuedTurn(ctx context.Context, agentID uuid.UUID) (*Turn, e
 	return &turn, nil
 }
 
+// RunningTurn returns the agent's running turn, or nil if none. The
+// driver uses it on startup to error turns orphaned by a crash.
+func (s *Store) RunningTurn(ctx context.Context, agentID uuid.UUID) (*Turn, error) {
+	rows, _ := s.pool.Query(ctx, `
+		SELECT `+turnCols+` FROM lab.turns
+		WHERE agent_id = $1 AND status = 'running'
+		ORDER BY created_at, id
+		LIMIT 1`,
+		agentID)
+	turn, err := pgx.CollectExactlyOneRow(rows, pgx.RowToStructByName[Turn])
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("running turn: %w", err)
+	}
+	return &turn, nil
+}
+
+// SetTurnSession stamps the session a turn was delivered in. Returns
+// ErrNotFound if the turn does not exist.
+func (s *Store) SetTurnSession(ctx context.Context, id, sessionID uuid.UUID) error {
+	tag, err := s.pool.Exec(ctx,
+		"UPDATE lab.turns SET session_id = $2 WHERE id = $1", id, sessionID)
+	if err != nil {
+		return fmt.Errorf("set turn session: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // FinishTurn closes a running turn with status done or error. errMsg
 // is recorded for error; ignored (stored as NULL) for done. Returns
 // ErrNotFound if the turn does not exist or is not running.

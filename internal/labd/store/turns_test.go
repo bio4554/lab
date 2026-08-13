@@ -156,3 +156,51 @@ func TestFinishTurnValidation(t *testing.T) {
 		t.Errorf("FinishTurn(not running) = %v, want ErrNotFound", err)
 	}
 }
+
+func TestRunningTurnAndSetTurnSession(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	f := createFixture(t, s)
+
+	if got, err := s.RunningTurn(ctx, f.Agent.ID); err != nil || got != nil {
+		t.Fatalf("RunningTurn(none) = %+v, %v; want nil, nil", got, err)
+	}
+
+	turn, err := s.EnqueueTurn(ctx, NewTurn{AgentID: f.Agent.ID, SourceKind: SourceKindUser, Content: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Queued turns are not running.
+	if got, err := s.RunningTurn(ctx, f.Agent.ID); err != nil || got != nil {
+		t.Fatalf("RunningTurn(queued only) = %+v, %v; want nil, nil", got, err)
+	}
+	if _, err := s.NextQueuedTurn(ctx, f.Agent.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.RunningTurn(ctx, f.Agent.ID)
+	if err != nil || got == nil || got.ID != turn.ID || got.Status != TurnStatusRunning {
+		t.Fatalf("RunningTurn = %+v, %v; want turn %s running", got, err, turn.ID)
+	}
+
+	sess, err := s.CreateSession(ctx, f.Agent.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetTurnSession(ctx, turn.ID, sess.ID); err != nil {
+		t.Fatalf("SetTurnSession: %v", err)
+	}
+	stamped, err := s.GetTurn(ctx, turn.ID)
+	if err != nil || stamped.SessionID == nil || *stamped.SessionID != sess.ID {
+		t.Fatalf("turn after SetTurnSession = %+v, %v; want session %s", stamped, err, sess.ID)
+	}
+	if err := s.SetTurnSession(ctx, uuid.New(), sess.ID); err != ErrNotFound {
+		t.Fatalf("SetTurnSession(missing) = %v, want ErrNotFound", err)
+	}
+
+	if err := s.FinishTurn(ctx, turn.ID, TurnStatusDone, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.RunningTurn(ctx, f.Agent.ID); err != nil || got != nil {
+		t.Fatalf("RunningTurn(after finish) = %+v, %v; want nil, nil", got, err)
+	}
+}
